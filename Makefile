@@ -1,0 +1,35 @@
+.PHONY: run build test docker-up docker-down dev install-air
+
+# Run the application directly 
+api:
+	go run cmd/api/main.go
+
+scratch:
+	go run cmd/scratch/main.go
+
+token:
+	go run cmd/tokengen/main.go
+
+# Build the application
+build:
+	go build -o bin/api cmd/api/main.go
+
+# Run tests
+test:
+	go test -v ./...
+
+# Start Docker Compose services
+docker-up:
+	docker-compose up -d
+
+# Stop Docker Compose services
+docker-down:
+	docker-compose down
+
+# Install Air for hot reloading
+install-air:
+	go install github.com/cosmtrek/air@latest
+
+# Run with hot reloading using Air
+dev:
+	air

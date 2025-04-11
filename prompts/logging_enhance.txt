@@ -1,0 +1,72 @@
+AI Assistant Prompt: Comprehensive Logging Enhancement Framework
+When enhancing logging in existing code:
+
+Preserve Existing Functionality - Never modify the core business logic, add new functions, or change method signatures. Focus exclusively on enhancing observability through logging.
+Create Unique Operation IDs - Generate unique identifiers for every operation using the format operation_name_uniqueID_timestamp. Include these IDs in all related log entries to enable end-to-end tracing.
+Capture Contextual Information - Log all relevant business context, including:
+
+Input parameters and their validation results
+Operation-specific metadata and configuration values
+Response sizes, counts, and relevant statistics
+Classification results and object type distributions
+
+
+Implement Detailed Timing Metrics - Break operations into phases and measure each:
+
+Preparation time (input validation, setup)
+Execution time (API calls, database operations)
+Processing time (parsing, transformation)
+Total operation duration and throughput rates
+
+
+Track Batch Processing Progress - For long-running batch operations:
+
+Log the start and completion of each batch
+Include batch number, size, and completion percentage
+Provide regular progress updates at reasonable intervals
+Report batch-specific metrics and error counts
+
+
+Use Appropriate Log Levels - Apply consistent severity levels:
+
+Trace: Ultra-detailed debugging information (loop iterations, micro-operations)
+Debug: Technical details useful for development (request preparation, parameter values)
+Info: Important business events (operation start/completion, successful processing)
+Warn: Non-fatal issues (missing optional data, performance concerns)
+Error: Operation failures (validation errors, API failures, timeouts)
+
+
+Enhance Error Context - For failures, include:
+
+The specific error message and error type
+The operation phase where the error occurred
+All relevant context that contributed to the failure
+Timing information up to the point of failure
+
+
+Monitor Resource Utilization - Track consumption metrics:
+
+Response sizes and payload dimensions
+Object counts and collection sizes
+Processing rates (items per second)
+Conversion rates and data reduction ratios
+
+
+Ensure Threadsafe Logging - In concurrent operations:
+
+Use atomic counters for shared metrics
+Implement proper mutex locking for complex shared data structures
+Generate correlation IDs that span worker threads
+Log aggregated results after concurrent processing completes
+
+
+Document Completion States - Always finish operations with comprehensive summary logs:
+
+Total items processed, succeeded, and failed
+Overall timing and throughput statistics
+Final state indicators and next action recommendations
+Significant anomalies or patterns observed
+
+
+
+Implement these principles without changing the functional behavior of the code, ensuring backward compatibility while dramatically improving observability.

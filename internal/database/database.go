@@ -1,0 +1,317 @@
+package database
+
+import (
+	"context"
+	"harvest/internal/config"
+	"harvest/internal/model"
+	"time"
+
+	"github.com/rs/zerolog/log"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+type Database interface {
+	Health() (string, error)
+	BulkUpsertEntities(context.Context, string, []model.Entity) error
+	GetActivePlayers(context.Context, int) ([]model.Entity, error)
+	GetActiveTournaments(context.Context, int) ([]model.Entity, error)
+	ImportMatch(context.Context, model.Match) (bool, error)
+	ImportMatches(context.Context, []model.Match) (int, error)
+	GetProcessedMatchIDs(context.Context) ([]string, error)
+	GetUnprocessedMatches(context.Context, int) ([]model.Match, error)
+	GetMatchesByType(context.Context, string, int) ([]model.Match, error)
+	MarkMatchAsProcessed(context.Context, string) error
+}
+
+type mongoDB struct {
+	client *mongo.Client
+	db     *mongo.Database
+
+	trainCol       *mongo.Collection
+	playersCol     *mongo.Collection
+	tournamentsCol *mongo.Collection
+	matchesCol     *mongo.Collection
+}
+
+func New(config *config.Config) (Database, error) {
+	clientOptions := options.Client().ApplyURI(config.MongoDB.URI)
+	clientOptions.SetAuth(options.Credential{
+		Username: config.MongoDB.Username,
+		Password: config.MongoDB.Password,
+	})
+
+	client, err := mongo.Connect(context.TODO(), clientOptions)
+
+	db := client.Database(config.MongoDB.DB)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &mongoDB{
+		client:         client,
+		db:             db,
+		trainCol:       db.Collection("erangel_train"),
+		playersCol:     db.Collection("players"),
+		tournamentsCol: db.Collection("tournaments"),
+		matchesCol:     db.Collection("matches"),
+	}, nil
+}
+
+// Health implements Database interface
+func (m *mongoDB) Health() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err := m.client.Ping(ctx, nil)
+
+	if err != nil {
+		log.Error().Msgf("Database health error: %v", err)
+		return "Database Offline", err
+	}
+
+	return "Database Online", nil
+}
+
+// BulkUpsertEntities adds or updates multiple entities in the specified collection
+func (m *mongoDB) BulkUpsertEntities(ctx context.Context, collection string, entities []model.Entity) error {
+	if len(entities) == 0 {
+		return nil
+	}
+
+	col := m.db.Collection(collection)
+
+	// Create a slice of write models for bulk operation
+	var models []mongo.WriteModel
+
+	for _, entity := range entities {
+		// Ensure entity has Active set to true by default if not specified
+		if !entity.Active {
+			entity.Active = true
+		}
+
+		// Create filter for this entity
+		filter := bson.M{"id": entity.ID}
+
+		// Create update model for this entity
+		update := bson.M{"$set": entity}
+
+		// Create an UpdateOneModel with upsert option
+		model := mongo.NewUpdateOneModel().
+			SetFilter(filter).
+			SetUpdate(update).
+			SetUpsert(true)
+
+		models = append(models, model)
+	}
+
+	// Set options for bulk write
+	opts := options.BulkWrite().SetOrdered(false)
+
+	// Execute bulk write operation
+	_, err := col.BulkWrite(ctx, models, opts)
+	if err != nil {
+		log.Error().Msgf("Failed to bulk upsert entities: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// GetActiveEntities retrieves all active entities from the specified collection
+func (m *mongoDB) getActiveEntities(ctx context.Context, col *mongo.Collection, limit int) ([]model.Entity, error) {
+	filter := bson.M{"active": true}
+
+	findOptions := options.Find()
+	findOptions.SetLimit(int64(limit))
+
+	cursor, err := col.Find(ctx, filter, findOptions)
+	if err != nil {
+		log.Error().Msgf("Error retrieving active entities: %v", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var entities []model.Entity
+	if err = cursor.All(ctx, &entities); err != nil {
+		log.Error().Msgf("Error decoding entities: %v", err)
+		return nil, err
+	}
+
+	return entities, nil
+}
+
+func (m *mongoDB) GetActivePlayers(ctx context.Context, limit int) ([]model.Entity, error) {
+	return m.getActiveEntities(ctx, m.playersCol, limit)
+}
+
+func (m *mongoDB) GetActiveTournaments(ctx context.Context, limit int) ([]model.Entity, error) {
+	return m.getActiveEntities(ctx, m.tournamentsCol, limit)
+}
+
+// ImportMatches imports matches into the database if they don't already exist
+func (m *mongoDB) ImportMatches(ctx context.Context, matches []model.Match) (int, error) {
+	if len(matches) == 0 {
+		return 0, nil
+	}
+
+	// Create a slice of write models for bulk operation
+	var models []mongo.WriteModel
+
+	for _, match := range matches {
+		// Set import timestamp
+		match.ImportedAt = time.Now()
+
+		// Create filter to check if match already exists
+		filter := bson.M{"match_id": match.MatchID}
+
+		// Create an InsertOneModel with a check for existence
+		model := mongo.NewUpdateOneModel().
+			SetFilter(filter).
+			SetUpdate(bson.M{"$setOnInsert": match}).
+			SetUpsert(true)
+
+		models = append(models, model)
+	}
+
+	// Set options for bulk write
+	opts := options.BulkWrite().SetOrdered(false)
+
+	// Execute bulk write operation
+	result, err := m.matchesCol.BulkWrite(ctx, models, opts)
+	if err != nil {
+		log.Error().Msgf("Failed to import matches: %v", err)
+		return 0, err
+	}
+
+	// Return the number of newly inserted documents
+	return int(result.UpsertedCount), nil
+}
+
+// ImportMatch imports a single match if it doesn't already exist
+func (m *mongoDB) ImportMatch(ctx context.Context, match model.Match) (bool, error) {
+	// Set import timestamp
+	match.ImportedAt = time.Now()
+
+	// Create filter to check if match already exists
+	filter := bson.M{"match_id": match.MatchID}
+
+	// Set options for update
+	opts := options.Update().SetUpsert(true)
+
+	// Use $setOnInsert to only insert if the document doesn't exist
+	result, err := m.matchesCol.UpdateOne(
+		ctx,
+		filter,
+		bson.M{"$setOnInsert": match},
+		opts,
+	)
+
+	if err != nil {
+		log.Error().Msgf("Failed to import match: %v", err)
+		return false, err
+	}
+
+	// Return true if a new document was inserted, false if it already existed
+	return result.UpsertedCount > 0, nil
+}
+
+// GetProcessedMatchIDs returns a list of match IDs that have been processed
+func (m *mongoDB) GetProcessedMatchIDs(ctx context.Context) ([]string, error) {
+	filter := bson.M{"processed": true}
+
+	// Only select the match_id field
+	projection := bson.M{"match_id": 1, "_id": 0}
+	findOptions := options.Find().SetProjection(projection)
+
+	cursor, err := m.matchesCol.Find(ctx, filter, findOptions)
+	if err != nil {
+		log.Error().Msgf("Error retrieving processed match IDs: %v", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	// Use a slice of structs to capture the results
+	var matches []struct {
+		MatchID string `bson:"match_id"`
+	}
+
+	if err = cursor.All(ctx, &matches); err != nil {
+		log.Error().Msgf("Error decoding match IDs: %v", err)
+		return nil, err
+	}
+
+	// Convert to a slice of strings
+	matchIDs := make([]string, len(matches))
+	for i, match := range matches {
+		matchIDs[i] = match.MatchID
+	}
+
+	return matchIDs, nil
+}
+
+// GetUnprocessedMatches returns a list of matches that have not been processed
+func (m *mongoDB) GetUnprocessedMatches(ctx context.Context, limit int) ([]model.Match, error) {
+	filter := bson.M{"processed": bson.M{"$ne": true}}
+
+	findOptions := options.Find().SetLimit(int64(limit))
+
+	cursor, err := m.matchesCol.Find(ctx, filter, findOptions)
+	if err != nil {
+		log.Error().Msgf("Error retrieving unprocessed matches: %v", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var matches []model.Match
+	if err = cursor.All(ctx, &matches); err != nil {
+		log.Error().Msgf("Error decoding matches: %v", err)
+		return nil, err
+	}
+
+	return matches, nil
+}
+
+// GetMatchesByType returns a list of matches of a specific type
+func (m *mongoDB) GetMatchesByType(ctx context.Context, matchType string, limit int) ([]model.Match, error) {
+	filter := bson.M{"match_type": matchType}
+
+	findOptions := options.Find().SetLimit(int64(limit))
+
+	cursor, err := m.matchesCol.Find(ctx, filter, findOptions)
+	if err != nil {
+		log.Error().Msgf("Error retrieving matches by type: %v", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var matches []model.Match
+	if err = cursor.All(ctx, &matches); err != nil {
+		log.Error().Msgf("Error decoding matches: %v", err)
+		return nil, err
+	}
+
+	return matches, nil
+}
+
+// MarkMatchAsProcessed marks a match as processed
+func (m *mongoDB) MarkMatchAsProcessed(ctx context.Context, matchID string) error {
+	filter := bson.M{"match_id": matchID}
+
+	update := bson.M{
+		"$set": bson.M{
+			"processed":    true,
+			"processed_at": time.Now(),
+		},
+	}
+
+	_, err := m.matchesCol.UpdateOne(ctx, filter, update)
+	if err != nil {
+		log.Error().Msgf("Error marking match as processed: %v", err)
+		return err
+	}
+
+	return nil
+}

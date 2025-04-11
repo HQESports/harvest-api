@@ -1,0 +1,51 @@
+{
+    "env": "dev",
+    "port": 3000,
+    "cors": {
+        "allowed_origins": [
+            "http://localhost:5173"
+        ],
+        "allowed_methods": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "OPTIONS"
+        ],
+        "allowed_headers": [
+            "Accept",
+            "Authorization",
+            "Content-Type",
+            "X-CSRF-Token"
+        ],
+        "allow_credentials": true,
+        "max_age": 86400
+    },
+    "pubg": {
+        "api_key": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiIwNTgyNDYzMC04YjAyLTAxM2EtNzJmZC0zOWI5Nzc1NTkyMzkiLCJpc3MiOiJnYW1lbG9ja2VyIiwiaWF0IjoxNjQ3ODM4OTQ0LCJwdWIiOiJibHVlaG9sZSIsInRpdGxlIjoicHViZyIsImFwcCI6Ii1mYWExN2M2NS1jMDY3LTQwMDgtYTRlYi00MDE5ZjMwNjE5NGUifQ.a7COJpOhVq0dThUulTZBzwr7xfaZIttxZWJxV-xUsYA",
+        "base_url": "https://api.pubg.com",
+        "shards": {
+            "live": "steam",
+            "tournament": "tournament"
+        },
+        "requestDelay": 6000,
+        "maxRetries": 3,
+        "requestsPerMinute": 10,
+        "oldEnoughCap": 1570
+    },
+    "mongodb": {
+        "uri": "mongodb://root:password@localhost:27017",
+        "username": "root",
+        "password": "password",
+        "db": "pubg",
+        "options": {
+            "connectTimeoutMS": 30000,
+            "maxPoolSize": 20
+        }
+    },
+    "logging": {
+        "level": "debug",
+        "format": "combined",
+        "directory": "./logs"
+    }
+}
