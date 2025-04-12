@@ -1,8 +1,13 @@
 package pubg
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"harvest/internal/cache"
+	"harvest/internal/config"
 	"io"
 	"net/http"
 	"time"
@@ -18,6 +23,8 @@ type Client struct {
 	OldEnoughMin  int
 	requestTicker *time.Ticker
 	requestChan   chan struct{}
+	cache         cache.Cache
+	defaultTTL    time.Duration
 }
 
 const (
@@ -25,16 +32,16 @@ const (
 	EventPlatform = "tournaments"
 )
 
-// New creates a new PUBG API client with rate limiting
-func New(apiKey, baseURL string, oldEnoughMin int, requestsPerMinute int) *Client {
+// New creates a new PUBG API client with rate limiting and caching
+func New(config config.PUBGConfig, cache cache.Cache) *Client {
 	// Calculate interval between requests
-	interval := time.Minute / time.Duration(requestsPerMinute-1)
+	interval := time.Minute / time.Duration(config.RequestsPerMinute-1)
 
 	log.Info().
-		Int("requests_per_minute", requestsPerMinute).
+		Int("requests_per_minute", config.RequestsPerMinute).
 		Dur("request_interval", interval).
-		Str("base_url", baseURL).
-		Int("old_enough_min", oldEnoughMin).
+		Str("base_url", config.BaseURL).
+		Bool("cache_enabled", cache != nil).
 		Msg("Initializing PUBG API client")
 
 	// Create a ticker that ticks once per allowed request
@@ -52,109 +59,105 @@ func New(apiKey, baseURL string, oldEnoughMin int, requestsPerMinute int) *Clien
 			// Try to add a token, but don't block if buffer is full
 			select {
 			case requestChan <- struct{}{}:
-				// Successfully added a token
-				log.Trace().Msg("Added token to request channel")
+				// Token added
 			default:
-				// Buffer full, skip this token
-				log.Trace().Msg("Request channel buffer full, skipping token")
+				// Buffer full, skip
 			}
 		}
 	}()
 
-	client := &Client{
-		httpClient:    &http.Client{Timeout: time.Second * 30},
-		apiKey:        apiKey,
-		baseURL:       baseURL,
-		OldEnoughMin:  oldEnoughMin,
-		requestTicker: ticker,
-		requestChan:   requestChan,
+	// If no default TTL is specified, set a reasonable default
+	defaultTTL := time.Duration(config.DefaultCacheTTL) * time.Minute
+	if defaultTTL == 0 {
+		defaultTTL = time.Duration(15) * time.Minute
 	}
 
-	log.Info().Msg("PUBG API client initialized successfully")
+	client := &Client{
+		httpClient:    &http.Client{Timeout: time.Second * 30},
+		apiKey:        config.APIKey,
+		baseURL:       config.BaseURL,
+		OldEnoughMin:  config.OldEnoughMin,
+		requestTicker: ticker,
+		requestChan:   requestChan,
+		cache:         cache,
+		defaultTTL:    defaultTTL,
+	}
+
 	return client
 }
 
+// generateCacheKey creates a unique hash for the request
+func generateCacheKey(endpoint string) string {
+	hash := sha256.Sum256([]byte(endpoint))
+	return hex.EncodeToString(hash[:])
+}
+
 // request is the internal method that makes an HTTP request
-// with optional rate limiting
-func (c *Client) request(endpoint string, shouldRateLimit bool) ([]byte, error) {
-	requestID := fmt.Sprintf("req_%d", time.Now().UnixNano())
+// with optional rate limiting and caching
+func (c *Client) request(ctx context.Context, endpoint string, shouldRateLimit bool) ([]byte, error) {
+	url := fmt.Sprintf("%s%s", c.baseURL, endpoint)
 	startTime := time.Now()
 
-	url := fmt.Sprintf("%s%s", c.baseURL, endpoint)
+	// Try to get from cache first if cache is enabled
+	if c.cache != nil {
+		cacheKey := generateCacheKey(endpoint)
+		cachedData, err := c.cache.Get(ctx, cacheKey)
 
-	log.Debug().
-		Str("request_id", requestID).
-		Str("endpoint", endpoint).
-		Str("url", url).
-		Bool("rate_limited", shouldRateLimit).
-		Msg("Preparing API request")
+		if err == nil {
+			// Cache hit
+			log.Debug().
+				Str("endpoint", endpoint).
+				Int("response_size", len(cachedData)).
+				Msg("Cache hit")
+			return cachedData, nil
+		} else if err != cache.ErrCacheMiss {
+			// Real error, not just a cache miss
+			log.Warn().
+				Err(err).
+				Str("endpoint", endpoint).
+				Msg("Cache error, falling back to API")
+		}
+	}
 
 	// Apply rate limiting if needed
 	if shouldRateLimit {
-		waitStart := time.Now()
-		log.Debug().
-			Str("request_id", requestID).
-			Msg("Waiting for rate limit token")
-
-		// Wait for permission to make a request
 		<-c.requestChan
-
-		waitDuration := time.Since(waitStart)
-		log.Debug().
-			Str("request_id", requestID).
-			Dur("wait_duration", waitDuration).
-			Msg("Acquired rate limit token")
 	}
 
 	// Create request with headers
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		log.Error().
-			Str("request_id", requestID).
 			Err(err).
 			Str("url", url).
-			Dur("prep_duration", time.Since(startTime)).
 			Msg("Error creating request")
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
+
+	// Add the context to the request
+	req = req.WithContext(ctx)
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Accept", "application/vnd.api+json")
 
 	// Execute request
-	execStart := time.Now()
-	log.Debug().
-		Str("request_id", requestID).
-		Str("url", url).
-		Dur("prep_duration", execStart.Sub(startTime)).
-		Msg("Executing API request")
-
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		log.Error().
-			Str("request_id", requestID).
 			Err(err).
 			Str("url", url).
-			Dur("prep_duration", execStart.Sub(startTime)).
-			Dur("exec_duration", time.Since(execStart)).
-			Dur("total_duration", time.Since(startTime)).
 			Msg("Error executing request")
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Read response
-	readStart := time.Now()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error().
-			Str("request_id", requestID).
 			Err(err).
 			Str("url", url).
 			Int("status_code", resp.StatusCode).
-			Dur("prep_duration", execStart.Sub(startTime)).
-			Dur("exec_duration", readStart.Sub(execStart)).
-			Dur("total_duration", time.Since(startTime)).
 			Msg("Error reading response body")
 		return nil, fmt.Errorf("error reading response: %w", err)
 	}
@@ -163,56 +166,59 @@ func (c *Client) request(endpoint string, shouldRateLimit bool) ([]byte, error) 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := parseAPIError(resp.StatusCode, respBody)
 		log.Error().
-			Str("request_id", requestID).
 			Err(apiErr).
 			Str("url", url).
 			Int("status_code", resp.StatusCode).
-			Int("response_size", len(respBody)).
-			Dur("prep_duration", execStart.Sub(startTime)).
-			Dur("exec_duration", readStart.Sub(execStart)).
-			Dur("read_duration", time.Since(readStart)).
-			Dur("total_duration", time.Since(startTime)).
-			Msg("API returned error response")
+			Msg("API error response")
 		return nil, apiErr
 	}
 
-	// Success
+	// Cache the response if cache is enabled
+	if c.cache != nil {
+		cacheKey := generateCacheKey(endpoint)
+		err := c.cache.Set(ctx, cacheKey, respBody, c.defaultTTL)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Str("endpoint", endpoint).
+				Msg("Failed to cache response")
+		}
+	}
+
+	// Log a single success entry with duration
 	log.Debug().
-		Str("request_id", requestID).
-		Str("url", url).
+		Str("endpoint", endpoint).
 		Int("status_code", resp.StatusCode).
 		Int("response_size", len(respBody)).
-		Dur("prep_duration", execStart.Sub(startTime)).
-		Dur("exec_duration", readStart.Sub(execStart)).
-		Dur("read_duration", time.Since(readStart)).
-		Dur("total_duration", time.Since(startTime)).
-		Msg("API request completed successfully")
+		Dur("duration", time.Since(startTime)).
+		Msg("API request completed")
 
 	return respBody, nil
 }
 
 // Request is a backward-compatible function that always applies rate limiting
 func (c *Client) Request(endpoint string) ([]byte, error) {
-	log.Debug().
-		Str("endpoint", endpoint).
-		Msg("Using rate-limited request (legacy method)")
 	return c.RequestRateLimited(endpoint)
 }
 
 // RequestRateLimited makes a rate-limited request to the PUBG API
 func (c *Client) RequestRateLimited(endpoint string) ([]byte, error) {
-	log.Debug().
-		Str("endpoint", endpoint).
-		Msg("Making rate-limited request")
-	return c.request(endpoint, true)
+	return c.request(context.Background(), endpoint, true)
+}
+
+// RequestRateLimitedWithContext makes a rate-limited request with context
+func (c *Client) RequestRateLimitedWithContext(ctx context.Context, endpoint string) ([]byte, error) {
+	return c.request(ctx, endpoint, true)
 }
 
 // RequestNonRateLimited makes a request to the PUBG API without rate limiting
 func (c *Client) RequestNonRateLimited(endpoint string) ([]byte, error) {
-	log.Debug().
-		Str("endpoint", endpoint).
-		Msg("Making non-rate-limited request")
-	return c.request(endpoint, false)
+	return c.request(context.Background(), endpoint, false)
+}
+
+// RequestNonRateLimitedWithContext makes a non-rate-limited request with context
+func (c *Client) RequestNonRateLimitedWithContext(ctx context.Context, endpoint string) ([]byte, error) {
+	return c.request(ctx, endpoint, false)
 }
 
 // parseAPIError extracts error information from the API response
@@ -233,85 +239,77 @@ func parseAPIError(statusCode int, respBody []byte) error {
 	return fmt.Errorf("API error: status code %d", statusCode)
 }
 
-// GetTelemetry retrieves a telemetry file with optional rate limiting
-func (c *Client) GetTelemetry(telemetryURL string, shouldRateLimit bool) ([]byte, error) {
-	requestID := fmt.Sprintf("telemetry_%d", time.Now().UnixNano())
+// generateTelemetryCacheKey creates a unique hash for a telemetry URL
+func generateTelemetryCacheKey(telemetryURL string) string {
+	hash := sha256.Sum256([]byte(telemetryURL))
+	return "telemetry:" + hex.EncodeToString(hash[:])
+}
+
+// GetTelemetry retrieves a telemetry file with optional rate limiting and caching
+func (c *Client) GetTelemetry(ctx context.Context, telemetryURL string, shouldRateLimit bool) ([]byte, error) {
 	startTime := time.Now()
 
-	log.Debug().
-		Str("request_id", requestID).
-		Str("telemetry_url", telemetryURL).
-		Bool("rate_limited", shouldRateLimit).
-		Msg("Preparing telemetry request")
+	// Try to get from cache first if cache is enabled
+	if c.cache != nil {
+		cacheKey := generateTelemetryCacheKey(telemetryURL)
+		cachedData, err := c.cache.Get(ctx, cacheKey)
+
+		if err == nil {
+			// Cache hit
+			log.Debug().
+				Str("telemetry_url", telemetryURL).
+				Int("response_size", len(cachedData)).
+				Msg("Cache hit for telemetry")
+			return cachedData, nil
+		} else if err != cache.ErrCacheMiss {
+			// Real error, not just a cache miss
+			log.Warn().
+				Err(err).
+				Str("telemetry_url", telemetryURL).
+				Msg("Cache error for telemetry, falling back to API")
+		}
+	}
 
 	// Apply rate limiting if needed
 	if shouldRateLimit {
-		waitStart := time.Now()
-		log.Debug().
-			Str("request_id", requestID).
-			Msg("Waiting for rate limit token for telemetry request")
-
-		// Wait for permission to make a request
 		<-c.requestChan
-
-		waitDuration := time.Since(waitStart)
-		log.Debug().
-			Str("request_id", requestID).
-			Dur("wait_duration", waitDuration).
-			Msg("Acquired rate limit token for telemetry request")
 	}
 
 	// Create the request
 	req, err := http.NewRequest(http.MethodGet, telemetryURL, nil)
 	if err != nil {
 		log.Error().
-			Str("request_id", requestID).
 			Err(err).
 			Str("telemetry_url", telemetryURL).
-			Dur("prep_duration", time.Since(startTime)).
 			Msg("Error creating telemetry request")
 		return nil, fmt.Errorf("error creating telemetry request: %w", err)
 	}
+
+	// Add the context to the request
+	req = req.WithContext(ctx)
 
 	// Set the authorization header with your bearer token
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Accept", "application/json")
 
-	// Execute request
-	execStart := time.Now()
-	log.Debug().
-		Str("request_id", requestID).
-		Str("telemetry_url", telemetryURL).
-		Dur("prep_duration", execStart.Sub(startTime)).
-		Msg("Executing telemetry request")
-
 	// Make the request
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		log.Error().
-			Str("request_id", requestID).
 			Err(err).
 			Str("telemetry_url", telemetryURL).
-			Dur("prep_duration", execStart.Sub(startTime)).
-			Dur("exec_duration", time.Since(execStart)).
-			Dur("total_duration", time.Since(startTime)).
 			Msg("Error executing telemetry request")
 		return nil, fmt.Errorf("error making telemetry request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Read response
-	readStart := time.Now()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error().
-			Str("request_id", requestID).
 			Err(err).
 			Str("telemetry_url", telemetryURL).
 			Int("status_code", resp.StatusCode).
-			Dur("prep_duration", execStart.Sub(startTime)).
-			Dur("exec_duration", readStart.Sub(execStart)).
-			Dur("total_duration", time.Since(startTime)).
 			Msg("Error reading telemetry response")
 		return nil, fmt.Errorf("error reading telemetry response: %w", err)
 	}
@@ -320,54 +318,65 @@ func (c *Client) GetTelemetry(telemetryURL string, shouldRateLimit bool) ([]byte
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := parseAPIError(resp.StatusCode, respBody)
 		log.Error().
-			Str("request_id", requestID).
 			Err(apiErr).
 			Str("telemetry_url", telemetryURL).
 			Int("status_code", resp.StatusCode).
-			Int("response_size", len(respBody)).
-			Dur("prep_duration", execStart.Sub(startTime)).
-			Dur("exec_duration", readStart.Sub(execStart)).
-			Dur("read_duration", time.Since(readStart)).
-			Dur("total_duration", time.Since(startTime)).
-			Msg("Telemetry request returned error response")
+			Msg("Telemetry API error response")
 		return nil, apiErr
 	}
 
-	// Success
+	// Cache the response if cache is enabled
+	if c.cache != nil {
+		cacheKey := generateTelemetryCacheKey(telemetryURL)
+		// Telemetry data can be large, so we might want to use a longer TTL
+		telemetryTTL := c.defaultTTL * 2
+		err := c.cache.Set(ctx, cacheKey, respBody, telemetryTTL)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Str("telemetry_url", telemetryURL).
+				Msg("Failed to cache telemetry response")
+		}
+	}
+
+	// Log a single success entry with duration
 	log.Debug().
-		Str("request_id", requestID).
 		Str("telemetry_url", telemetryURL).
 		Int("status_code", resp.StatusCode).
 		Int("response_size", len(respBody)).
-		Dur("prep_duration", execStart.Sub(startTime)).
-		Dur("exec_duration", readStart.Sub(execStart)).
-		Dur("read_duration", time.Since(readStart)).
-		Dur("total_duration", time.Since(startTime)).
-		Msg("Telemetry request completed successfully")
+		Dur("duration", time.Since(startTime)).
+		Msg("Telemetry request completed")
 
 	return respBody, nil
 }
 
-// GetTelemetryRateLimited retrieves a telemetry file with rate limiting
+// Backward compatibility methods for telemetry
+
 func (c *Client) GetTelemetryRateLimited(telemetryURL string) ([]byte, error) {
-	log.Debug().
-		Str("telemetry_url", telemetryURL).
-		Msg("Making rate-limited telemetry request")
-	return c.GetTelemetry(telemetryURL, true)
+	return c.GetTelemetry(context.Background(), telemetryURL, true)
 }
 
-// GetTelemetryNonRateLimited retrieves a telemetry file without rate limiting
 func (c *Client) GetTelemetryNonRateLimited(telemetryURL string) ([]byte, error) {
-	log.Debug().
-		Str("telemetry_url", telemetryURL).
-		Msg("Making non-rate-limited telemetry request")
-	return c.GetTelemetry(telemetryURL, false)
+	return c.GetTelemetry(context.Background(), telemetryURL, false)
 }
 
-// Close stops the ticker when the client is no longer needed
+// GetTelemetryWithContext adds context support to telemetry requests
+func (c *Client) GetTelemetryWithContext(ctx context.Context, telemetryURL string, shouldRateLimit bool) ([]byte, error) {
+	return c.GetTelemetry(ctx, telemetryURL, shouldRateLimit)
+}
+
+// Close stops the ticker and closes the cache when the client is no longer needed
 func (c *Client) Close() {
+	log.Info().Msg("Shutting down PUBG API client")
+
 	if c.requestTicker != nil {
-		log.Info().Msg("Shutting down PUBG API client")
 		c.requestTicker.Stop()
+	}
+
+	if c.cache != nil {
+		err := c.cache.Close()
+		if err != nil {
+			log.Error().Err(err).Msg("Error closing cache")
+		}
 	}
 }

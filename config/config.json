@@ -1,6 +1,13 @@
 {
     "env": "dev",
     "port": 3000,
+    "app_name": "Harvest API",
+    "redis": {
+        "Address": "redis:6379",
+        "Password": "",
+        "DB": 0,
+        "Prefix": "pubg"
+    },
     "cors": {
         "allowed_origins": [
             "http://localhost:5173"
@@ -28,10 +35,10 @@
             "live": "steam",
             "tournament": "tournament"
         },
-        "requestDelay": 6000,
-        "maxRetries": 3,
-        "requestsPerMinute": 10,
-        "oldEnoughCap": 1570
+        "request_delay": 6000,
+        "max_retries": 3,
+        "requests_per_minute": 10,
+        "old_enough_cap": 1570
     },
     "mongodb": {
         "uri": "mongodb://localhost:27017",

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"harvest/internal/cache"
 	"harvest/internal/config"
 	"harvest/internal/database"
 	"harvest/internal/server"
@@ -19,9 +19,9 @@ import (
 
 func main() {
 	// Load configuration
-	cfg, err := config.LoadConfig("config.json")
+	cfg, err := config.LoadConfig("config/config.json")
 	if err != nil {
-		fmt.Printf("Failed to load configuration: %v\n", err)
+		log.Fatal().Err(err).Msg("Failed to load configuration")
 		os.Exit(1)
 	}
 
@@ -37,18 +37,20 @@ func main() {
 	}
 	log.Info().Msg("Database connection established")
 
+	// Initialize Redis connectoin
+	cache, err := cache.NewRedisCache(cfg.Redis)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize redis cache connection")
+	}
+	log.Info().Msg("Redis connection established")
+
 	// Initialize PUBG API client
-	pubgClient := pubg.New(
-		cfg.PUBG.APIKey,
-		cfg.PUBG.BaseURL,
-		cfg.PUBG.OldEnoughCap,
-		cfg.PUBG.RequestsPerMinute,
-	)
+	pubgClient := pubg.New(cfg.PUBG, cache)
 	defer pubgClient.Close()
 	log.Info().Msg("PUBG API client initialized")
 
 	// Create and start HTTP server
-	srv := server.New(*cfg, db, *pubgClient)
+	srv := server.New(*cfg, db, cache, *pubgClient)
 
 	// Start the server in a goroutine to avoid blocking
 	go func() {

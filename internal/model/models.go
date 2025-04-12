@@ -23,10 +23,6 @@ const (
 	// Job Types
 	BUILD_MATCHES  = "BUILD_MATCHES"
 	EXPAND_PLAYERS = "EXPAND_PLAYERS"
-
-	// Role Types for Authentication Tokenss
-	RoleAdmin   = "ADMIN"   // Can manage tokens and access all API endpoints
-	RoleService = "SERVICE" // Can only access API endpoints, not token management
 )
 
 // Entity represents a common structure for players and tournaments
@@ -81,9 +77,9 @@ type JobProgress struct {
 // APIToken represents a service authentication token
 type APIToken struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty"`
-	TokenHash string             `bson:"token_hash" json:"-"` // Hashed token value stored in DB
-	Name      string             `bson:"name" json:"name"`    // Name/description of the token
-	Role      string             `bson:"role" json:"role"`    // Either "admin" or "service"
+	TokenHash string             `bson:"token_hash" json:"-" unique:"true"` // Hashed token value stored in DB
+	Name      string             `bson:"name" json:"name" unique:"true"`    // Name/description of the token
+	Role      string             `bson:"role" json:"role"`                  // Either "admin" or "service"
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 	ExpiresAt time.Time          `bson:"expires_at,omitempty" json:"expires_at,omitempty"` // Optional expiration
 	LastUsed  time.Time          `bson:"last_used,omitempty" json:"last_used,omitempty"`

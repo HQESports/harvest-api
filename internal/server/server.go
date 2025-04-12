@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"harvest/internal/cache"
 	"harvest/internal/config"
 	"harvest/internal/controller"
 	"harvest/internal/database"
@@ -13,16 +14,19 @@ import (
 type Server struct {
 	sc     controller.ServerController
 	pc     controller.PubgController
+	tc     controller.TokenController
 	config config.Config
 }
 
-func New(config config.Config, db database.Database, client pubg.Client) *http.Server {
-	sc := controller.NewServer(db)
+func New(config config.Config, db database.Database, cache cache.Cache, client pubg.Client) *http.Server {
+	sc := controller.NewServer(db, cache)
 	pc := controller.NewPUBG(db, client)
+	tc := controller.NewToken(db)
 
 	server := Server{
 		sc:     sc,
 		pc:     pc,
+		tc:     tc,
 		config: config,
 	}
 

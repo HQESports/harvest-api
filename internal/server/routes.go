@@ -1,6 +1,7 @@
 package server
 
 import (
+	"harvest/internal/controller"
 	"net/http"
 	"time"
 
@@ -19,15 +20,29 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           time.Duration(s.config.CORS.MaxAge) * time.Second,
 	}))
 
+	// Public routes that don't require authentication
 	r.GET("/health", s.healthHandler)
 	r.GET("/online", s.onlineHandler)
 
-	r.POST("/names", s.namesHandler)
-	r.POST("/buildMatches", s.BuildMatchesFromFilter)
+	// API routes that require either ADMIN or SERVICE role
+	api := r.Group("/api")
+	api.Use(s.AuthMiddleware(controller.RoleAdmin, controller.RoleService))
+	{
+		api.POST("/names", s.namesHandler)
+		api.POST("/buildMatches", s.BuildMatchesFromFilter)
+		api.POST("/tournaments", s.tournamentsHandler)
+		api.POST("/expandPlayers", s.expandPlayers)
+	}
 
-	r.POST("/tournaments", s.tournamentsHandler)
-
-	r.POST("/expandPlayers", s.expandPlayers)
+	// Token management routes (ADMIN only)
+	tokens := r.Group("/token")
+	tokens.Use(s.AuthMiddleware(controller.RoleAdmin))
+	{
+		tokens.POST("", s.CreateTokenHandler)
+		tokens.GET("", s.ListTokensHandler)
+		tokens.GET("/:id", s.GetTokenHandler)
+		tokens.DELETE("/:id", s.RevokeTokenHandler)
+	}
 
 	return r
 }

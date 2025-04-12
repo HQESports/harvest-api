@@ -10,11 +10,19 @@ import (
 type Config struct {
 	Env     string        `json:"env"`
 	Port    int           `json:"port"`
+	AppName string        `json:"app_name"`
 	PUBG    PUBGConfig    `json:"pubg"`
 	MongoDB MongoDBConfig `json:"mongodb"`
+	Redis   RedisConfig   `json:"redis"`
 	Logging LoggingConfig `json:"logging"`
-	S3      S3Config      `json:"s3"`
 	CORS    CORSConfig    `json:"cors"` // Add this new field
+}
+
+type RedisConfig struct {
+	Address  string
+	Password string
+	DB       int
+	Prefix   string
 }
 
 // CORSConfig contains Cross-Origin Resource Sharing settings
@@ -31,10 +39,12 @@ type PUBGConfig struct {
 	APIKey            string            `json:"api_key"`
 	BaseURL           string            `json:"base_url"`
 	Shards            map[string]string `json:"shards"`
-	RequestDelay      int               `json:"requestDelay"`
-	MaxRetries        int               `json:"maxRetries"`
-	RequestsPerMinute int               `json:"requestsPerMinute"`
-	OldEnoughCap      int               `json:"oldEnoughCap"`
+	RequestDelay      int               `json:"request_delay"`
+	MaxRetries        int               `json:"max_retries"`
+	RequestsPerMinute int               `json:"requests_per_minute"`
+	OldEnoughMin      int               `json:"old_enough_min"`
+	Cache             bool              `json:"cahce"`
+	DefaultCacheTTL   int               `json:"default_cache_ttl"`
 }
 
 // MongoDBConfig contains MongoDB connection details
@@ -51,17 +61,6 @@ type LoggingConfig struct {
 	Level     string `json:"level"`
 	Format    string `json:"format"`
 	Directory string `json:"directory"`
-}
-
-// S3Config contains S3 bucket connection details
-type S3Config struct {
-	AccessKeyID     string         `json:"accessKeyId"`
-	SecretAccessKey string         `json:"secretAccessKey"`
-	Region          string         `json:"region"`
-	Bucket          string         `json:"bucket"`
-	Endpoint        string         `json:"endpoint"`
-	ForcePathStyle  bool           `json:"forcePathStyle"`
-	UploadOptions   map[string]int `json:"uploadOptions"`
 }
 
 // LoadConfig reads configuration from the specified file path
