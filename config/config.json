@@ -3,7 +3,7 @@
     "port": 3000,
     "app_name": "Harvest API",
     "redis": {
-        "Address": "redis:6379",
+        "Address": "localhost:6379",
         "Password": "",
         "DB": 0,
         "Prefix": "pubg"

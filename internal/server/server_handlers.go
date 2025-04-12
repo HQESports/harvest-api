@@ -28,14 +28,21 @@ var ValidMapNames = map[string]bool{
 }
 
 // TODO: Implement context propigation to DB layer via controller route context -> controller -> DB. Add max times to HTTP server
-func (s *Server) healthHandler(c *gin.Context) {
-	health, err := s.sc.Health()
+func (s *Server) readyHandler(c *gin.Context) {
+	dbHealth, dbErr := s.sc.DBHealth()
+	cacheHealth, cacheErr := s.sc.CacheHealth()
 
-	if err != nil {
-		c.String(http.StatusInternalServerError, health)
+	res := gin.H{
+		"database":    dbHealth,
+		"cacheHealth": cacheHealth,
 	}
 
-	c.String(http.StatusOK, health)
+	if dbErr != nil || cacheErr != nil {
+		c.JSON(http.StatusServiceUnavailable, res)
+		return
+	}
+
+	c.JSON(http.StatusOK, res)
 }
 
 func (s *Server) onlineHandler(c *gin.Context) {

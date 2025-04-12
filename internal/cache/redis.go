@@ -22,7 +22,7 @@ type Cache interface {
 	Delete(ctx context.Context, key string) error
 
 	// Ping tests the connection to the cache
-	Ping(ctx context.Context) error
+	Ping(ctx context.Context) (string, error)
 
 	// Close releases resources used by the cache
 	Close() error
@@ -158,7 +158,7 @@ func (c *RedisCache) Delete(ctx context.Context, key string) error {
 }
 
 // Ping tests the connection to the cache
-func (c *RedisCache) Ping(ctx context.Context) error {
+func (c *RedisCache) Ping(ctx context.Context) (string, error) {
 	start := time.Now()
 	err := c.client.Ping(ctx).Err()
 	duration := time.Since(start)
@@ -168,14 +168,14 @@ func (c *RedisCache) Ping(ctx context.Context) error {
 			Err(err).
 			Dur("duration", duration).
 			Msg("Error pinging Redis")
-		return err
+		return "Cache Offline", err
 	}
 
 	log.Debug().
 		Dur("duration", duration).
 		Msg("Successfully pinged Redis")
 
-	return nil
+	return "Cache Online", nil
 }
 
 // Close releases resources used by the cache

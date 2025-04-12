@@ -21,7 +21,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	}))
 
 	// Public routes that don't require authentication
-	r.GET("/health", s.healthHandler)
+	r.GET("/ready", s.readyHandler)
 	r.GET("/online", s.onlineHandler)
 
 	// API routes that require either ADMIN or SERVICE role

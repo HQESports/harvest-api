@@ -1,8 +1,8 @@
 services:
   # MongoDB
-  mongo:  # Changed service name from mongodb to mongo
+  mongo:
     image: mongo:latest
-    container_name: mongo
+    container_name: harvest_mongo
     ports:
       - "27017:27017"
     environment:
@@ -11,26 +11,44 @@ services:
     volumes:
       - mongodb_data:/data/db
     networks:
-      - app_network
+      - harvest_network
     restart: always
 
   # Redis
   redis:
     image: redis:alpine
-    container_name: redis
+    container_name: harvest_redis
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
-      - app_network
+      - harvest_network
     restart: always
     command: redis-server --appendonly yes
+    
+  # RabbitMQ With Management Plugin
+  # The management UI will be accessible at http://localhost:15672 with the username "admin" and password "password" once the container is running.
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: harvest_rabbitmq
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI port
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - harvest_network
+    restart: always
 
 networks:
-  app_network:
+  harvest_network:
     driver: bridge
 
 volumes:
   mongodb_data:
   redis_data:
+  rabbitmq_data:
