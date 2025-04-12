@@ -2,104 +2,105 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"harvest/internal/config"
-	"harvest/internal/model"
+	"harvest/internal/database"
+	"harvest/internal/server"
+	"harvest/pkg/pubg"
+	"net/http"
 	"os"
-	"strconv"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
-	// Configure logging
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log := zerolog.New(os.Stderr).With().Timestamp().Logger()
-
-	if len(os.Args) < 4 {
-		fmt.Println("Usage: create_token <config_path> <token_name> <expires_in_days>")
-		fmt.Println("Example: create_token config.json \"Initial Admin Token\" 365")
+	// Load configuration
+	cfg, err := config.LoadConfig("config.json")
+	if err != nil {
+		fmt.Printf("Failed to load configuration: %v\n", err)
 		os.Exit(1)
 	}
 
-	configPath := os.Args[1]
-	tokenName := os.Args[2]
-	expiresInDays, err := strconv.Atoi(os.Args[3])
+	// Configure logging
+	setupLogger(cfg.Logging)
+	log.Info().Msg("Starting PUBG Harvest API")
+	log.Info().Str("environment", cfg.Env).Int("port", cfg.Port).Msg("Configuration loaded")
+
+	// Initialize MongoDB connection
+	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatal().Msgf("Invalid expires_in_days value: %v", err)
+		log.Fatal().Err(err).Msg("Failed to initialize database connection")
 	}
+	log.Info().Msg("Database connection established")
 
-	// Load configuration
-	config, err := config.LoadConfig(configPath)
+	// Initialize PUBG API client
+	pubgClient := pubg.New(
+		cfg.PUBG.APIKey,
+		cfg.PUBG.BaseURL,
+		cfg.PUBG.OldEnoughCap,
+		cfg.PUBG.RequestsPerMinute,
+	)
+	defer pubgClient.Close()
+	log.Info().Msg("PUBG API client initialized")
+
+	// Create and start HTTP server
+	srv := server.New(*cfg, db, *pubgClient)
+
+	// Start the server in a goroutine to avoid blocking
+	go func() {
+		log.Info().Int("port", cfg.Port).Msg("Starting HTTP server")
+		if err := srv.ListenAndServe(); err != nil {
+			if err.Error() != "http: Server closed" {
+				log.Error().Err(err).Msg("HTTP server error")
+			}
+		}
+	}()
+
+	// Set up graceful shutdown
+	gracefulShutdown(srv)
+}
+
+func setupLogger(config config.LoggingConfig) {
+	// Set global log level
+	level, err := zerolog.ParseLevel(config.Level)
 	if err != nil {
-		log.Fatal().Msgf("Failed to load configuration: %v", err)
+		level = zerolog.InfoLevel
+	}
+	zerolog.SetGlobalLevel(level)
+
+	// Configure logger output
+	switch config.Format {
+	case "json":
+		// JSON is the default for zerolog
+	case "console", "combined":
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339})
 	}
 
-	// Connect to MongoDB using the same pattern as in mongo.go
-	clientOptions := options.Client().ApplyURI(config.MongoDB.URI)
-	clientOptions.SetAuth(options.Credential{
-		Username: config.MongoDB.Username,
-		Password: config.MongoDB.Password,
-	})
+	// Add timestamp
+	log.Logger = log.With().Timestamp().Logger()
+}
 
-	client, err := mongo.Connect(context.TODO(), clientOptions)
-	if err != nil {
-		log.Fatal().Msgf("Failed to connect to MongoDB: %v", err)
-	}
-	defer client.Disconnect(context.TODO())
+func gracefulShutdown(srv *http.Server) {
+	// Create channel to listen for interrupt signals
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// Test the connection
-	err = client.Ping(context.TODO(), nil)
-	if err != nil {
-		log.Fatal().Msgf("Failed to ping MongoDB: %v", err)
-	}
+	// Block until we receive a signal
+	sig := <-quit
+	log.Info().Str("signal", sig.String()).Msg("Shutting down server")
 
-	db := client.Database(config.MongoDB.DB)
-	apiTokensCol := db.Collection("api_tokens")
+	// Create context with timeout for shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	// Generate a secure random token
-	b := make([]byte, 32) // 256 bits of randomness
-	_, err = rand.Read(b)
-	if err != nil {
-		log.Fatal().Msgf("Failed to generate random token: %v", err)
-	}
-	rawToken := base64.URLEncoding.EncodeToString(b)
-
-	// Hash the token for storage
-	h := sha256.New()
-	h.Write([]byte(rawToken))
-	tokenHash := hex.EncodeToString(h.Sum(nil))
-
-	// Create token document
-	token := model.APIToken{
-		ID:        primitive.NewObjectID(),
-		TokenHash: tokenHash,
-		Name:      tokenName,
-		Role:      model.RoleAdmin, // Create as admin token
-		CreatedAt: time.Now(),
-		Revoked:   false,
+	// Attempt to gracefully shut down the server
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error().Err(err).Msg("Server forced to shutdown")
 	}
 
-	// Set expiration if provided
-	if expiresInDays > 0 {
-		token.ExpiresAt = time.Now().AddDate(0, 0, expiresInDays)
-	}
-
-	// Insert token into database
-	_, err = apiTokensCol.InsertOne(context.TODO(), token)
-	if err != nil {
-		log.Fatal().Msgf("Failed to insert token: %v", err)
-	}
-
-	fmt.Println("Admin token created successfully!")
-	fmt.Println("Token:", rawToken)
-	fmt.Println("IMPORTANT: Save this token securely. It won't be shown again.")
+	log.Info().Msg("Server exiting")
 }

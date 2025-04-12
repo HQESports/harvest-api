@@ -34,7 +34,7 @@
         "oldEnoughCap": 1570
     },
     "mongodb": {
-        "uri": "mongodb://root:password@localhost:27017",
+        "uri": "mongodb://localhost:27017",
         "username": "root",
         "password": "password",
         "db": "pubg",

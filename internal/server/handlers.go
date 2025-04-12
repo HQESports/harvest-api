@@ -32,6 +32,7 @@ var ValidMapNames = map[string]bool{
 	"Neon_Main":       true,
 }
 
+// TODO: Implement context propigation to DB layer via controller route context -> controller -> DB. Add max times to HTTP server
 func (s *Server) healthHandler(c *gin.Context) {
 	health, err := s.sc.Health()
 
