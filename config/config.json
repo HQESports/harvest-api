@@ -54,5 +54,27 @@
         "level": "debug",
         "format": "combined",
         "directory": "./logs"
+    },
+    "rabbitmq": {
+        "username": "admin",
+        "password": "password",
+        "host": "localhost",
+        "port": 5672,
+        "vhost": "/",
+        "routing_key": "jobs",
+        "exchange_name": "harvest_jobs",
+        "queue_name": "jobs",
+        "prefetch_count": 10
+    },
+    "jobs": {
+        "worker_count": 5,
+        "default_max_retries": 3,
+        "default_batch_size": 100,
+        "job_types": [
+            {
+                "type": "player-search-and-expand",
+                "batch_size": 50
+            }
+        ]
     }
 }

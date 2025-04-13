@@ -8,21 +8,24 @@ import (
 
 // Config represents the entire application configuration
 type Config struct {
-	Env     string        `json:"env"`
-	Port    int           `json:"port"`
-	AppName string        `json:"app_name"`
-	PUBG    PUBGConfig    `json:"pubg"`
-	MongoDB MongoDBConfig `json:"mongodb"`
-	Redis   RedisConfig   `json:"redis"`
-	Logging LoggingConfig `json:"logging"`
-	CORS    CORSConfig    `json:"cors"` // Add this new field
+	Env      string         `json:"env"`
+	Port     int            `json:"port"`
+	AppName  string         `json:"app_name"`
+	PUBG     PUBGConfig     `json:"pubg"`
+	MongoDB  MongoDBConfig  `json:"mongodb"`
+	Redis    RedisConfig    `json:"redis"`
+	Logging  LoggingConfig  `json:"logging"`
+	CORS     CORSConfig     `json:"cors"`
+	RabbitMQ RabbitMQConfig `json:"rabbitmq"` // Add this new field
+	Jobs     JobsConfig     `json:"jobs"`     // Add this new field
 }
 
+// RedisConfig contains Redis connection details
 type RedisConfig struct {
-	Address  string
-	Password string
-	DB       int
-	Prefix   string
+	Address  string `json:"address"`
+	Password string `json:"password"`
+	DB       int    `json:"db"`
+	Prefix   string `json:"prefix"`
 }
 
 // CORSConfig contains Cross-Origin Resource Sharing settings
@@ -31,7 +34,7 @@ type CORSConfig struct {
 	AllowedMethods   []string `json:"allowed_methods"`
 	AllowedHeaders   []string `json:"allowed_headers"`
 	AllowCredentials bool     `json:"allow_credentials"`
-	MaxAge           int      `json:"max_age,omitempty"` // Optional, seconds that preflight requests can be cached
+	MaxAge           int      `json:"max_age,omitempty"`
 }
 
 // PUBGConfig contains PUBG API-related configurations
@@ -43,7 +46,7 @@ type PUBGConfig struct {
 	MaxRetries        int               `json:"max_retries"`
 	RequestsPerMinute int               `json:"requests_per_minute"`
 	OldEnoughMin      int               `json:"old_enough_min"`
-	Cache             bool              `json:"cahce"`
+	Cache             bool              `json:"cache"`
 	DefaultCacheTTL   int               `json:"default_cache_ttl"`
 }
 
@@ -54,6 +57,33 @@ type MongoDBConfig struct {
 	Password string                 `json:"password"`
 	DB       string                 `json:"db"`
 	Options  map[string]interface{} `json:"options"`
+}
+
+// RabbitMQConfig contains RabbitMQ connection and queue settings
+type RabbitMQConfig struct {
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
+	VHost         string `json:"vhost"`
+	ExchangeName  string `json:"exchange_name"`
+	QueueName     string `json:"queue_name"`
+	RoutingKey    string `json:"routing_key"`
+	PrefetchCount int    `json:"prefetch_count"`
+	MaxRetries    int    `json:"max_retries"`
+}
+
+// JobsConfig contains job processing settings
+type JobsConfig struct {
+	WorkerCount      int             `json:"worker_count"`
+	DefaultBatchSize int             `json:"default_batch_size"`
+	JobTypes         []JobTypeConfig `json:"job_types"`
+}
+
+// JobTypeConfig contains configuration for a specific job type
+type JobTypeConfig struct {
+	Type      string `json:"type"`
+	BatchSize int    `json:"batch_size"`
 }
 
 // LoggingConfig contains logging-related configurations

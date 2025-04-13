@@ -4,9 +4,10 @@
 api:
 	go run cmd/api/main.go
 
-scratch:
-	go run cmd/scratch/main.go
+rabbit:
+	go run cmd/rabbit/main.go
 
+# Creates initial admin token based off of config.json
 token:
 	go run cmd/tokengen/main.go
 
@@ -33,3 +34,6 @@ install-air:
 # Run with hot reloading using Air
 dev:
 	air
+
+tidy:
+	go mod tidy

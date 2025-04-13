@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="800" fill="#f8f9fa" />
+
+  <!-- Title -->
+  <text x="600" y="40" font-family="Arial" font-size="24" text-anchor="middle" font-weight="bold">Harvest API
+    Architecture</text>
+
+  <!-- Client Layer -->
+  <rect x="450" y="70" width="300" height="60" rx="10" fill="#66c2a5" stroke="#333" stroke-width="2" />
+  <text x="600" y="105" font-family="Arial" font-size="16" text-anchor="middle" fill="#333" font-weight="bold">Client
+    Applications</text>
+
+  <!-- API Server Layer Box -->
+  <rect x="200" y="160" width="800" height="160" rx="10" fill="#f6f6f6" stroke="#a8a8a8" stroke-width="2"
+    stroke-dasharray="5,3" />
+  <text x="600" y="180" font-family="Arial" font-size="16" text-anchor="middle" fill="#333" font-weight="bold">API
+    Server Layer</text>
+
+  <!-- Server Components -->
+  <rect x="450" y="190" width="300" height="50" rx="10" fill="#8da0cb" stroke="#333" stroke-width="2" />
+  <text x="600" y="220" font-family="Arial" font-size="14" text-anchor="middle" fill="#333" font-weight="bold">API
+    Server (Gin)</text>
+
+  <!-- Authentication -->
+  <rect x="250" y="250" width="200" height="40" rx="10" fill="#e78ac3" stroke="#333" stroke-width="2" />
+  <text x="350" y="275" font-family="Arial" font-size="14" text-anchor="middle" fill="#333">Auth Middleware</text>
+
+  <!-- Routes -->
+  <rect x="500" y="250" width="200" height="40" rx="10" fill="#e78ac3" stroke="#333" stroke-width="2" />
+  <text x="600" y="275" font-family="Arial" font-size="14" text-anchor="middle" fill="#333">Route Handlers</text>
+
+  <!-- Endpoints -->
+  <rect x="750" y="250" width="200" height="40" rx="10" fill="#e78ac3" stroke="#333" stroke-width="2" />
+  <text x="850" y="275" font-family="Arial" font-size="14" text-anchor="middle" fill="#333">API Endpoints</text>
+
+  <!-- Controller Layer Box -->
+  <rect x="200" y="350" width="800" height="120" rx="10" fill="#f6f6f6" stroke="#a8a8a8" stroke-width="2"
+    stroke-dasharray="5,3" />
+  <text x="600" y="370" font-family="Arial" font-size="16" text-anchor="middle" fill="#333"
+    font-weight="bold">Controller Layer</text>
+
+  <!-- Controllers -->
+  <rect x="230" y="390" width="170" height="50" rx="10" fill="#fc8d62" stroke="#333" stroke-width="2" />
+  <text x="315" y="420" font-family="Arial" font-size="14" text-anchor="middle" fill="#333">ServerController</text>
+
+  <rect x="420" y="390" width="170" height="50" rx="10" fill="#fc8d62" stroke="#333" stroke-width="2" />
+  <text x="505" y="420" font-family="Arial" font-size="14" text-anchor="middle" fill="#333">PubgController</text>
+
+  <rect x="610" y="390" width="170" height="50" rx="10" fill="#fc8d62" stroke="#333" stroke-width="2" />
+  <text x="695" y="420" font-family="Arial" font-size="14" text-anchor="middle" fill="#333">JobController</text>
+
+  <rect x="800" y="390" width="170" height="50" rx="10" fill="#fc8d62" stroke="#333" stroke-width="2" />
+  <text x="885" y="420" font-family="Arial" font-size="14" text-anchor="middle" fill="#333">TokenController</text>
+
+  <!-- Infrastructure Layer Box -->
+  <rect x="100" y="500" width="600" height="250" rx="10" fill="#f6f6f6" stroke="#a8a8a8" stroke-width="2"
+    stroke-dasharray="5,3" />
+  <text x="400" y="520" font-family="Arial" font-size="16" text-anchor="middle" fill="#333"
+    font-weight="bold">Infrastructure Layer</text>
+
+  <!-- Database -->
+  <rect x="130" y="540" width="170" height="190" rx="10" fill="#a6d854" stroke="#333" stroke-width="2" />
+  <text x="215" y="560" font-family="Arial" font-size="16" text-anchor="middle" fill="#333"
+    font-weight="bold">MongoDB</text>
+
+  <!-- Collections -->
+  <rect x="145" y="580" width="140" height="30" rx="5" fill="#d9f0d3" stroke="#333" stroke-width="1" />
+  <text x="215" y="600" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Players Collection</text>
+
+  <rect x="145" y="620" width="140" height="30" rx="5" fill="#d9f0d3" stroke="#333" stroke-width="1" />
+  <text x="215" y="640" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Tournaments
+    Collection</text>
+
+  <rect x="145" y="660" width="140" height="30" rx="5" fill="#d9f0d3" stroke="#333" stroke-width="1" />
+  <text x="215" y="680" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Matches Collection</text>
+
+  <rect x="145" y="700" width="140" height="30" rx="5" fill="#d9f0d3" stroke="#333" stroke-width="1" />
+  <text x="215" y="720" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Jobs Collection</text>
+
+  <!-- Cache -->
+  <rect x="330" y="540" width="170" height="190" rx="10" fill="#ffd92f" stroke="#333" stroke-width="2" />
+  <text x="415" y="560" font-family="Arial" font-size="16" text-anchor="middle" fill="#333" font-weight="bold">Redis
+    Cache</text>
+
+  <!-- Cache Features -->
+  <rect x="345" y="580" width="140" height="40" rx="5" fill="#fff6b3" stroke="#333" stroke-width="1" />
+  <text x="415" y="605" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">API Response Caching</text>
+
+  <rect x="345" y="630" width="140" height="40" rx="5" fill="#fff6b3" stroke="#333" stroke-width="1" />
+  <text x="415" y="655" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">TTL-based Expiration</text>
+
+  <rect x="345" y="680" width="140" height="40" rx="5" fill="#fff6b3" stroke="#333" stroke-width="1" />
+  <text x="415" y="705" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Job Data Caching</text>
+
+  <!-- Message Queue -->
+  <rect x="530" y="540" width="170" height="190" rx="10" fill="#b3e2cd" stroke="#333" stroke-width="2" />
+  <text x="615" y="560" font-family="Arial" font-size="16" text-anchor="middle" fill="#333"
+    font-weight="bold">RabbitMQ</text>
+
+  <!-- Queue Components -->
+  <rect x="545" y="580" width="140" height="40" rx="5" fill="#e5f5f9" stroke="#333" stroke-width="1" />
+  <text x="615" y="605" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Exchange:
+    harvest_jobs</text>
+
+  <rect x="545" y="630" width="140" height="40" rx="5" fill="#e5f5f9" stroke="#333" stroke-width="1" />
+  <text x="615" y="655" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Queue: jobs</text>
+
+  <rect x="545" y="680" width="140" height="40" rx="5" fill="#e5f5f9" stroke="#333" stroke-width="1" />
+  <text x="615" y="705" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Consumer: Job
+    Processor</text>
+
+  <!-- External Systems Box -->
+  <rect x="750" y="500" width="350" height="250" rx="10" fill="#fff0db" stroke="#a8a8a8" stroke-width="2"
+    stroke-dasharray="5,3" />
+  <text x="925" y="520" font-family="Arial" font-size="16" text-anchor="middle" fill="#333" font-weight="bold">External
+    Systems</text>
+
+  <!-- PUBG API -->
+  <rect x="770" y="540" width="310" height="190" rx="10" fill="#fdcdac" stroke="#333" stroke-width="2" />
+  <text x="925" y="560" font-family="Arial" font-size="16" text-anchor="middle" fill="#333" font-weight="bold">PUBG API
+    Client</text>
+
+  <!-- PUBG Client Components -->
+  <rect x="790" y="580" width="125" height="40" rx="5" fill="#fed9a6" stroke="#333" stroke-width="1" />
+  <text x="852" y="605" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Player Module</text>
+
+  <rect x="935" y="580" width="125" height="40" rx="5" fill="#fed9a6" stroke="#333" stroke-width="1" />
+  <text x="997" y="605" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Match Module</text>
+
+  <rect x="790" y="630" width="125" height="40" rx="5" fill="#fed9a6" stroke="#333" stroke-width="1" />
+  <text x="852" y="655" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Tournament Module</text>
+
+  <rect x="935" y="630" width="125" height="40" rx="5" fill="#fed9a6" stroke="#333" stroke-width="1" />
+  <text x="997" y="655" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Telemetry Module</text>
+
+  <!-- Rate Limiting & Caching -->
+  <rect x="790" y="680" width="270" height="40" rx="5" fill="#fed9a6" stroke="#333" stroke-width="1" />
+  <text x="925" y="705" font-family="Arial" font-size="12" text-anchor="middle" fill="#333">Rate Limiting & Response
+    Caching</text>
+
+  <!-- Connection indicators (no lines) -->
+  <!-- Legend -->
+  <rect x="150" y="760" width="900" height="30" rx="5" fill="#f6f6f6" stroke="#a8a8a8" stroke-width="1" />
+  <text x="175" y="780" font-family="Arial" font-size="12" text-anchor="start" fill="#333">Legend: </text>
+
+  <!-- Legend Line 1 -->
+  <rect x="230" y="770" width="15" height="15" rx="3" fill="#8da0cb" stroke="#333" stroke-width="1" />
+  <text x="255" y="780" font-family="Arial" font-size="12" text-anchor="start" fill="#333">API Server</text>
+
+  <!-- Legend Line 2 -->
+  <rect x="330" y="770" width="15" height="15" rx="3" fill="#fc8d62" stroke="#333" stroke-width="1" />
+  <text x="355" y="780" font-family="Arial" font-size="12" text-anchor="start" fill="#333">Controllers</text>
+
+  <!-- Legend Line 3 -->
+  <rect x="430" y="770" width="15" height="15" rx="3" fill="#a6d854" stroke="#333" stroke-width="1" />
+  <text x="455" y="780" font-family="Arial" font-size="12" text-anchor="start" fill="#333">Database</text>
+
+  <!-- Legend Line 4 -->
+  <rect x="530" y="770" width="15" height="15" rx="3" fill="#ffd92f" stroke="#333" stroke-width="1" />
+  <text x="555" y="780" font-family="Arial" font-size="12" text-anchor="start" fill="#333">Cache</text>
+
+  <!-- Legend Line 5 -->
+  <rect x="630" y="770" width="15" height="15" rx="3" fill="#b3e2cd" stroke="#333" stroke-width="1" />
+  <text x="655" y="780" font-family="Arial" font-size="12" text-anchor="start" fill="#333">Message Queue</text>
+
+  <!-- Legend Line 6 -->
+  <rect x="760" y="770" width="15" height="15" rx="3" fill="#fdcdac" stroke="#333" stroke-width="1" />
+  <text x="785" y="780" font-family="Arial" font-size="12" text-anchor="start" fill="#333">External API</text>
+
+  <!-- Legend Line 7 -->
+  <rect x="870" y="770" width="15" height="15" rx="3" fill="#66c2a5" stroke="#333" stroke-width="1" />
+  <text x="895" y="780" font-family="Arial" font-size="12" text-anchor="start" fill="#333">Clients</text>
+</svg>

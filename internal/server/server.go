@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"harvest/internal/cache"
 	"harvest/internal/config"
 	"harvest/internal/controller"
 	"harvest/internal/database"
+	"harvest/internal/processor"
+	"harvest/internal/rabbitmq"
 	"harvest/pkg/pubg"
 	"net/http"
 	"time"
@@ -15,18 +18,25 @@ type Server struct {
 	sc     controller.ServerController
 	pc     controller.PubgController
 	tc     controller.TokenController
+	jc     controller.JobController
 	config config.Config
 }
 
-func New(config config.Config, db database.Database, cache cache.Cache, client pubg.Client) *http.Server {
-	sc := controller.NewServer(db, cache)
+func New(config config.Config, db database.Database, cache cache.Cache, rabbit rabbitmq.Client, client pubg.Client, processRegistry processor.BatchRegistry) *http.Server {
+	sc := controller.NewServer(db, cache, rabbit)
+
+	jc := controller.NewJobController(db, rabbit, config.RabbitMQ, config.Jobs, processRegistry)
+	jc.ProcessJobs(context.Background()) // Starts consuming messages from rabbit MQ
+
 	pc := controller.NewPUBG(db, client)
+
 	tc := controller.NewToken(db)
 
 	server := Server{
 		sc:     sc,
 		pc:     pc,
 		tc:     tc,
+		jc:     jc,
 		config: config,
 	}
 

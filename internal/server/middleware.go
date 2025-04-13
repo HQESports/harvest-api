@@ -63,6 +63,12 @@ func (s *Server) AuthMiddleware(requiredRoles ...string) gin.HandlerFunc {
 		// Store token info in the context for potential use in handlers
 		c.Set("token", token)
 
+		// Also store token ID for easier access in handlers
+		c.Set("tokenID", token.ID.Hex())
+
+		// Store token role for easier access in handlers
+		c.Set("tokenRole", token.Role)
+
 		c.Next()
 	}
 }

@@ -2,8 +2,9 @@ package database
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"harvest/internal/config"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -13,9 +14,10 @@ import (
 )
 
 type Database interface {
-	Health() (string, error)
+	Health() error
 	PubgDatabase
 	TokenDatabase
+	JobDatabase
 }
 
 type mongoDB struct {
@@ -27,6 +29,7 @@ type mongoDB struct {
 	tournamentsCol *mongo.Collection
 	matchesCol     *mongo.Collection
 	tokensCol      *mongo.Collection
+	jobsCol        *mongo.Collection
 }
 
 func New(config *config.Config) (Database, error) {
@@ -45,7 +48,6 @@ func New(config *config.Config) (Database, error) {
 	}
 
 	tokensCol := db.Collection("tokens")
-
 	// Create unique indexes on the tokens collection
 	indexModels := []mongo.IndexModel{
 		{
@@ -58,10 +60,50 @@ func New(config *config.Config) (Database, error) {
 		},
 	}
 
+	jobsCol := db.Collection("jobs")
+	// Create indexes for jobs collection
+	jobIndexModels := []mongo.IndexModel{
+		{
+			// Index for status-based queries
+			Keys:    bson.D{{Key: "status", Value: 1}},
+			Options: options.Index(),
+		},
+		{
+			// Index for user-based queries
+			Keys:    bson.D{{Key: "user_id", Value: 1}},
+			Options: options.Index(),
+		},
+		{
+			// Compound index for status + user queries
+			Keys:    bson.D{{Key: "status", Value: 1}, {Key: "user_id", Value: 1}},
+			Options: options.Index(),
+		},
+		{
+			// Index for job type queries
+			Keys:    bson.D{{Key: "type", Value: 1}},
+			Options: options.Index(),
+		},
+		{
+			// Index for sorting by creation date
+			Keys:    bson.D{{Key: "created_at", Value: -1}},
+			Options: options.Index(),
+		},
+		{
+			// TTL index to auto-delete old completed/failed jobs after 30 days
+			Keys:    bson.D{{Key: "completed_at", Value: 1}},
+			Options: options.Index().SetExpireAfterSeconds(60 * 60 * 24 * 30 * 6),
+		},
+	}
+
 	_, err = tokensCol.Indexes().CreateMany(context.Background(), indexModels)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create token indexes: %w", err)
+		log.Warn().Err(err).Str("Collection", "Tokens").Msg("Error creating indexes")
+	}
+
+	_, err = jobsCol.Indexes().CreateMany(context.Background(), jobIndexModels)
+	if err != nil {
+		log.Warn().Err(err).Str("Collection", "Jobs").Msg("Error creating indexes")
 	}
 
 	return &mongoDB{
@@ -71,12 +113,13 @@ func New(config *config.Config) (Database, error) {
 		playersCol:     db.Collection("players"),
 		tournamentsCol: db.Collection("tournaments"),
 		matchesCol:     db.Collection("matches"),
+		jobsCol:        jobsCol,
 		tokensCol:      tokensCol,
 	}, nil
 }
 
 // Health implements Database interface
-func (m *mongoDB) Health() (string, error) {
+func (m *mongoDB) Health() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
@@ -84,8 +127,31 @@ func (m *mongoDB) Health() (string, error) {
 
 	if err != nil {
 		log.Error().Msgf("Database health error: %v", err)
-		return "Database Offline", err
+		return err
 	}
 
-	return "Database Online", nil
+	return nil
+}
+
+// Helper function to check for duplicate index error
+func isDuplicateIndexError(err error) bool {
+	// MongoDB returns error code 86 for duplicate index
+	var cmdErr mongo.CommandError
+	if errors.As(err, &cmdErr) {
+		return cmdErr.Code == 86
+	}
+
+	// For MongoDB driver versions that use different error types
+	var writeErr mongo.WriteException
+	if errors.As(err, &writeErr) {
+		for _, we := range writeErr.WriteErrors {
+			if we.Code == 86 {
+				return true
+			}
+		}
+	}
+
+	// Fallback to check error message (less reliable)
+	return strings.Contains(err.Error(), "already exists") ||
+		strings.Contains(err.Error(), "duplicate key error")
 }

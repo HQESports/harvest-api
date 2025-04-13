@@ -3,6 +3,7 @@ package pubg
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -52,6 +53,49 @@ type IncludedObject struct {
 	ID            string                 `json:"id"`
 	Attributes    map[string]interface{} `json:"attributes"`
 	Relationships map[string]interface{} `json:"relationships,omitempty"`
+}
+
+func (s IncludedObject) getStats() map[string]string {
+	return s.Attributes["stats"].(map[string]string)
+}
+
+func (s IncludedObject) GetName() (string, bool) {
+	name, ok := s.getStats()["name"]
+
+	return name, ok
+}
+
+// Checks to see if the incuded object has a valid player name (not starting with ai, not empty, exists)
+func (s IncludedObject) IsValidPlayer() bool {
+	if s.Type != "participant" {
+		return false // Not a participant object so it cannot be a valid player
+	}
+	name, ok := s.GetName()
+
+	if !ok {
+		return false // Name not found in object return false to skip
+	}
+
+	name = strings.TrimSpace(name)
+
+	if name == "" {
+		return false // Empty name not valid for processing
+	}
+
+	if startsWithAI(name) {
+		return false // Bot account not valid for our purposes
+	}
+
+	return true
+}
+
+func startsWithAI(s string) bool {
+	// Check if the string starts with "ai" followed by a space or end of string
+	if len(s) >= 2 && strings.ToLower(s[:2]) == "ai" {
+		return true
+	}
+
+	return false
 }
 
 // GetMatch retrieves data for a specific match by ID

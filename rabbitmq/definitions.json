@@ -1,0 +1,54 @@
+{
+    "rabbit_version": "3.13.7",
+    "users": [
+        {
+            "name": "admin",
+            "password": "password",
+            "tags": "administrator"
+        }
+    ],
+    "vhosts": [
+        {
+            "name": "/"
+        }
+    ],
+    "permissions": [
+        {
+            "user": "admin",
+            "vhost": "/",
+            "configure": ".*",
+            "write": ".*",
+            "read": ".*"
+        }
+    ],
+    "exchanges": [
+        {
+            "name": "harvest_jobs",
+            "vhost": "/",
+            "type": "direct",
+            "durable": true,
+            "auto_delete": false,
+            "internal": false,
+            "arguments": {}
+        }
+    ],
+    "queues": [
+        {
+            "name": "jobs",
+            "vhost": "/",
+            "durable": true,
+            "auto_delete": false,
+            "arguments": {}
+        }
+    ],
+    "bindings": [
+        {
+            "source": "harvest_jobs",
+            "vhost": "/",
+            "destination": "jobs",
+            "destination_type": "queue",
+            "routing_key": "jobs",
+            "arguments": {}
+        }
+    ]
+}

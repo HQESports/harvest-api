@@ -28,7 +28,7 @@ func (m *mongoDB) CreateToken(ctx context.Context, token *model.APIToken) error 
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			log.Error().Str("Name", token.Name).Msgf("Duplicate token detected")
-			return fmt.Errorf("Duplicate token detected")
+			return fmt.Errorf("duplicate token detected")
 		}
 
 		log.Error().Msgf("Failed to create token: %v", err)

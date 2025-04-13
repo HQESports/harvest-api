@@ -73,7 +73,10 @@ func (m *mongoDB) getActiveEntities(ctx context.Context, col *mongo.Collection, 
 	filter := bson.M{"active": true}
 
 	findOptions := options.Find()
-	findOptions.SetLimit(int64(limit))
+
+	if limit > 0 {
+		findOptions.SetLimit(int64(limit))
+	}
 
 	cursor, err := col.Find(ctx, filter, findOptions)
 	if err != nil {

@@ -5,6 +5,8 @@ import (
 	"harvest/internal/cache"
 	"harvest/internal/config"
 	"harvest/internal/database"
+	"harvest/internal/processor"
+	"harvest/internal/rabbitmq"
 	"harvest/internal/server"
 	"harvest/pkg/pubg"
 	"net/http"
@@ -21,8 +23,8 @@ func main() {
 	// Load configuration
 	cfg, err := config.LoadConfig("config/config.json")
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load configuration")
-		os.Exit(1)
+		log.Error().Err(err).Msg("Failed to load configuration")
+		return
 	}
 
 	// Configure logging
@@ -33,24 +35,42 @@ func main() {
 	// Initialize MongoDB connection
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize database connection")
+		log.Error().Err(err).Msg("Failed to initialize database connection")
+		return
 	}
 	log.Info().Msg("Database connection established")
 
 	// Initialize Redis connectoin
 	cache, err := cache.NewRedisCache(cfg.Redis)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize redis cache connection")
+		log.Error().Err(err).Msg("Failed to initialize redis cache connection")
+		return
 	}
 	log.Info().Msg("Redis connection established")
+
+	// Initialize RabbitMQ connection
+	rabbit, err := rabbitmq.NewClientFromConfig(cfg.RabbitMQ)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to intialize rabbit mq client")
+		return
+	}
+	log.Info().Msg("Rabbit MQ connection established")
 
 	// Initialize PUBG API client
 	pubgClient := pubg.New(cfg.PUBG, cache)
 	defer pubgClient.Close()
 	log.Info().Msg("PUBG API client initialized")
 
+	// Initialize base process registry for job workers
+
+	// Creating processors
+	playerProcessor := processor.NewPlayerProcessor(db, pubgClient)
+
+	// Registering processors
+	registry := processor.NewRegistry(playerProcessor)
+
 	// Create and start HTTP server
-	srv := server.New(*cfg, db, cache, *pubgClient)
+	srv := server.New(*cfg, db, cache, rabbit, *pubgClient, registry)
 
 	// Start the server in a goroutine to avoid blocking
 	go func() {

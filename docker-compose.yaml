@@ -28,17 +28,19 @@ services:
     command: redis-server --appendonly yes
     
   # RabbitMQ With Management Plugin
-  # The management UI will be accessible at http://localhost:15672 with the username "admin" and password "password" once the container is running.
+  # Visit management web portal: http://localhost:15672/#/queues (admin, password credentials)
   rabbitmq:
     image: rabbitmq:3-management
     container_name: harvest_rabbitmq
     ports:
-      - "5672:5672"   # AMQP protocol port
-      - "15672:15672" # Management UI port
+      - "5672:5672"
+      - "15672:15672"
     environment:
       - RABBITMQ_DEFAULT_USER=admin
       - RABBITMQ_DEFAULT_PASS=password
     volumes:
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - harvest_network

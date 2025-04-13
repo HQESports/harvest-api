@@ -32,6 +32,16 @@ func (s *Server) RegisterRoutes() http.Handler {
 		api.POST("/buildMatches", s.BuildMatchesFromFilter)
 		api.POST("/tournaments", s.tournamentsHandler)
 		api.POST("/expandPlayers", s.expandPlayers)
+
+		// Job routes - accessible to both ADMIN and SERVICE roles
+		jobs := api.Group("/jobs")
+		{
+			jobs.POST("", s.CreateJobHandler)
+			jobs.GET("", s.ListJobsHandler)
+			jobs.GET("/all", s.ListAllJobsHandler) // For listing all jobs with optional status filter
+			jobs.GET("/types", s.ListAllAvailableJobTypes)
+			jobs.GET("/:id", s.GetJobHandler)
+		}
 	}
 
 	// Token management routes (ADMIN only)

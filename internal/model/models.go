@@ -54,26 +54,6 @@ type Match struct {
 	TelemetryURL string `bson:"telemetry_url,omitempty"` // URL to telemetry data
 }
 
-type Job struct {
-	ID     string `bson:"_id,omitempty"`
-	Type   string `bson:"type,omitempty"`   // e.g., "match_processing"
-	Status string `bson:"status,omitempty"` // "queued", "running", "completed", "failed", "canceled"
-
-	CreatedAt   time.Time `bson:"created_at,omitempty"`
-	StartedAt   time.Time `bson:"started_at,omitempty"`
-	CompletedAt time.Time `bson:"completed_at,omitempty"`
-
-	Progress JobProgress `bson:"progress,omitempty"`
-
-	Error string `bson:"error,omitempty"`
-}
-
-type JobProgress struct {
-	Total     int `bson:"total,omitempty"`
-	Processed int `bson:"processed,omitempty"`
-	Failed    int `bson:"failed,omitempty"`
-}
-
 // APIToken represents a service authentication token
 type APIToken struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty"`

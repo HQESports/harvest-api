@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Testing script to see if the rabbit MQ client functions correctly
 func main() {
 	// Load configuration
 	cfg, err := config.LoadConfig("config/config.json")
