@@ -37,12 +37,10 @@ type JobResult struct {
 
 // JobMetrics tracks the processing statistics for a job
 type JobMetrics struct {
-	TotalItems      int `bson:"total_items" json:"total_items"`
 	ProcessedItems  int `bson:"processed_items" json:"processed_items"`
 	SuccessCount    int `bson:"success_count" json:"success_count"`
 	WarningCount    int `bson:"warning_count" json:"warning_count"`
 	FailureCount    int `bson:"failure_count" json:"failure_count"`
-	BatchesTotal    int `bson:"batches_total" json:"batches_total"`
 	BatchesComplete int `bson:"batches_complete" json:"batches_complete"`
 }
 
@@ -54,8 +52,6 @@ type Job struct {
 	Progress    int                `bson:"progress" json:"progress"`
 	Metrics     JobMetrics         `bson:"metrics" json:"metrics"`
 	Payload     interface{}        `bson:"payload" json:"payload"`
-	Results     []JobResult        `bson:"results" json:"results"`
-	ErrorList   []string           `bson:"error_list,omitempty" json:"error_list,omitempty"`
 	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
 	CompletedAt *time.Time         `bson:"completed_at,omitempty" json:"completed_at,omitempty"`

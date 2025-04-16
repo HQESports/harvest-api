@@ -3,18 +3,28 @@ package processor
 import (
 	"context"
 	"harvest/internal/model"
-	"runtime"
 	"sync"
+	"sync/atomic"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type BaseBatchProcessor interface {
 	// ProcessBatch processes a job and returns results
-	ProcessBatch(context.Context, *model.Job) ([]model.JobResult, error)
+	StartJob(*model.Job) ([]model.JobResult, error)
 
-	UpdateMetrics(ctx context.Context, jobID string, metrics model.JobMetrics)
+	// Cancels the job
+	Cancel() error
+
+	// UpdateMetrics updates job metrics during processing
+	// Note: Changed jobID parameter type from string to primitive.ObjectID.Hex()
+	UpdateMetrics(ctx context.Context, jobID string, metrics model.JobMetrics) error
 
 	// Name returns the processor name
 	Name() string
+
+	// Is Active
+	IsActive() bool
 
 	// Type returns the type of the processor as a string
 	Type() string
@@ -22,86 +32,121 @@ type BaseBatchProcessor interface {
 
 type StringBatchProcessor interface {
 	BaseBatchProcessor
-	Operation(string) StatusError
+	Operation(context.Context, string, primitive.ObjectID) StatusError
 }
 
 type StringSliceBatchProcessor interface {
 	BaseBatchProcessor
-	Operation([]string) StatusError
+	Operation(context.Context, []string, primitive.ObjectID) StatusError
 }
 
-// ProcessBatch is a generic function that processes a batch of items concurrently
-// and tracks status counts
-func ProcessBatch[T any](items []T, operation func(T) StatusError, maxConcurrency int) model.JobMetrics {
-	// If maxConcurrency is not specified or invalid, set a reasonable default
-	if maxConcurrency <= 0 {
-		// Default to number of CPU cores for a reasonable balance
-		maxConcurrency = runtime.NumCPU()
+// Modified ProcessBatch to reduce database calls
+func ProcessBatch[T any](
+	ctx context.Context,
+	items []T,
+	operation func(context.Context, T, primitive.ObjectID) StatusError,
+	batchSize int,
+	processor BaseBatchProcessor,
+	jobID primitive.ObjectID,
+) model.JobMetrics {
+	// Initialize metrics to track the overall progress
+	totalMetrics := model.JobMetrics{
+		ProcessedItems:  0,
+		SuccessCount:    0,
+		WarningCount:    0,
+		FailureCount:    0,
+		BatchesComplete: 0,
 	}
 
-	// Create metrics for tracking results
-	operationMetrics := model.JobMetrics{}
+	// Create metrics buffer to reduce DB calls
+	buffer := NewMetricsBuffer(ctx, jobID.Hex(), processor)
+	defer buffer.Close()
 
-	// Create a mutex to protect the counters
-	var mutex sync.Mutex
+	// Process each batch sequentially
+	batches := SplitIntoBatches(items, batchSize)
+	for i, batch := range batches {
+		// Check for cancellation
+		if ctx.Err() != nil {
+			return totalMetrics
+		}
 
-	// Create a wait group to synchronize all work
+		// Process the batch
+		batchMetrics := processSingleBatch(ctx, batch, operation, jobID)
+
+		// Add to buffer (will be flushed automatically)
+		buffer.Add(batchMetrics)
+
+		// Update our total metrics for tracking
+		totalMetrics.ProcessedItems += batchMetrics.ProcessedItems
+		totalMetrics.SuccessCount += batchMetrics.SuccessCount
+		totalMetrics.WarningCount += batchMetrics.WarningCount
+		totalMetrics.FailureCount += batchMetrics.FailureCount
+		totalMetrics.BatchesComplete++
+
+		// For long-running processes, provide periodic complete snapshots
+		// but only every 5 batches to reduce DB calls
+		if i > 0 && i%5 == 0 {
+			// Force a manual update with current totals (not incremental)
+			// This ensures the client has an accurate view periodically
+			snapshotMetrics := totalMetrics
+			processor.UpdateMetrics(ctx, jobID.Hex(), snapshotMetrics)
+		}
+	}
+
+	return totalMetrics
+}
+
+// Helper function to process a single batch
+func processSingleBatch[T any](
+	ctx context.Context,
+	batch []T,
+	operation func(context.Context, T, primitive.ObjectID) StatusError,
+	jobID primitive.ObjectID,
+) model.JobMetrics {
+	batchMetrics := model.JobMetrics{BatchesComplete: 1}
+
 	var wg sync.WaitGroup
+	wg.Add(len(batch))
 
-	// Create a channel to feed work to the worker pool
-	// Buffer it to improve throughput
-	workChan := make(chan struct {
-		index int
-		item  T
-	}, min(len(items), 1000)) // Limit buffer size to avoid excessive memory usage
+	// Use atomic operations for thread safety
+	var processedItems, successCount, warningCount, failureCount int32
 
-	// Start the worker pool with the specified concurrency
-	wg.Add(maxConcurrency)
-	for i := 0; i < maxConcurrency; i++ {
+	// Process each item concurrently
+	for i, item := range batch {
+		_, item := i, item
 		go func() {
 			defer wg.Done()
 
-			// Process items from the work channel until it's closed
-			for work := range workChan {
-				// Apply the operation to the item
-				status := operation(work.item)
-
-				// Update metrics with proper synchronization
-				mutex.Lock()
-				switch status.Status {
-				case Success:
-					operationMetrics.SuccessCount++
-				case Warning:
-					operationMetrics.WarningCount++
-				case Failure:
-					operationMetrics.FailureCount++
-				}
-				mutex.Unlock()
+			if ctx.Err() != nil {
+				atomic.AddInt32(&warningCount, 1)
+				atomic.AddInt32(&processedItems, 1)
+				return
 			}
+
+			result := operation(ctx, item, jobID)
+
+			// Use atomic operations for thread safety
+			switch result.Status() {
+			case StatusSuccess:
+				atomic.AddInt32(&successCount, 1)
+			case StatusWarning:
+				atomic.AddInt32(&warningCount, 1)
+			case StatusFailure:
+				atomic.AddInt32(&failureCount, 1)
+			}
+			atomic.AddInt32(&processedItems, 1)
 		}()
 	}
 
-	// Feed all items to the work channel
-	for i, item := range items {
-		workChan <- struct {
-			index int
-			item  T
-		}{i, item}
-	}
-	close(workChan) // Signal workers that no more work is coming
-
-	// Wait for all workers to complete
 	wg.Wait()
 
-	return operationMetrics
-}
+	// Convert atomic counters to metrics
+	batchMetrics.ProcessedItems = int(processedItems)
+	batchMetrics.SuccessCount = int(successCount)
+	batchMetrics.WarningCount = int(warningCount)
+	batchMetrics.FailureCount = int(failureCount)
 
-// Helper function to return the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return batchMetrics
 }
 
 // SplitIntoBatches is a generic function that divides a slice of items
@@ -136,13 +181,4 @@ func SplitIntoBatches[T any](items []T, batchSize int) [][]T {
 	}
 
 	return batches
-}
-
-// Type-specific wrapper functions for backward compatibility
-func ProcessStringsBatch(strings []string, operation func(string) StatusError, batchSize int) model.JobMetrics {
-	return ProcessBatch(strings, operation, batchSize)
-}
-
-func ProcessStringSlicesBatch(stringSlices [][]string, operation func([]string) StatusError, batchSize int) model.JobMetrics {
-	return ProcessBatch(stringSlices, operation, batchSize)
 }

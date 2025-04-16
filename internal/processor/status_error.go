@@ -1,57 +1,52 @@
 package processor
 
-// Status represents the outcome of a string operation
-type Status int
-
-const (
-	Success Status = iota
-	Warning
-	Failure
+import (
+	"fmt"
 )
 
-// StatusError represents an error with an associated status
-type StatusError struct {
-	Message string
-	Status  Status
+// Status types
+const (
+	StatusSuccess = "success"
+	StatusFailure = "failure"
+	StatusWarning = "warning"
+	StatusSkipped = "skipped"
+)
+
+type StatusError interface {
+	Error() string
+	Status() string
+	Message() string
 }
 
-func (e StatusError) Error() string {
-	return e.Message
+type statusError struct {
+	status  string
+	message string
 }
 
-func NewSuccessError(msg string) StatusError {
-	return StatusError{
-		Message: msg,
-		Status:  Success,
-	}
+func (e *statusError) Error() string {
+	return fmt.Sprintf("%s: %s", e.status, e.message)
 }
 
-// NewWarningError creates a new warning error
-func NewWarningError(msg string) StatusError {
-	return StatusError{
-		Message: msg,
-		Status:  Warning,
-	}
+func (e *statusError) Status() string {
+	return e.status
 }
 
-// NewFailureError creates a new failure error
+func (e *statusError) Message() string {
+	return e.message
+}
+
+func NewSuccessError(message string) StatusError {
+	return &statusError{status: StatusSuccess, message: message}
+}
+
 func NewFailureError(err error) StatusError {
-	return StatusError{
-		Message: err.Error(),
-		Status:  Failure,
-	}
+	return &statusError{status: StatusFailure, message: err.Error()}
 }
 
-// Helper functions to check error status
-func GetErrorStatus(err error) Status {
-	if err == nil {
-		return Success
-	}
+func NewWarningError(message string) StatusError {
+	return &statusError{status: StatusWarning, message: message}
+}
 
-	if statusErr, ok := err.(*StatusError); ok {
-		return statusErr.Status
-	}
-
-	// Default to treating unknown errors as failures
-	return Failure
+func NewSkippedError(message string) StatusError {
+	return &statusError{status: StatusSkipped, message: message}
 }

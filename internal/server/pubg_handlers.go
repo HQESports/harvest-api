@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"harvest/internal/controller"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -94,27 +93,4 @@ func (s *Server) tournamentsHandler(c *gin.Context) {
 
 	// Return success response with count of processed tournaments
 	c.JSON(http.StatusCreated, gin.H{"tournamentsProcessed": count})
-}
-
-func (s *Server) expandPlayers(c *gin.Context) {
-	// Get the limit parameter from the route
-	limitStr := c.Query("limit")
-	limit, err := strconv.Atoi(limitStr)
-
-	if err != nil {
-		log.Error().Msgf("Invalid limit parameter: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit parameter"})
-		return
-	}
-
-	// Pass the limit to SearchAndExpandPlayers
-	count, err := s.pc.SearchAndExpandPlayers(limit)
-
-	if err != nil {
-		log.Error().Msgf("Error searching and expanding players: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, gin.H{"playersUpserted": count})
 }

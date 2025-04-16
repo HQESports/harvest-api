@@ -3,10 +3,10 @@
     "port": 3000,
     "app_name": "Harvest API",
     "redis": {
-        "Address": "localhost:6379",
-        "Password": "",
-        "DB": 0,
-        "Prefix": "pubg"
+        "address": "localhost:6379",
+        "password": "",
+        "db": 0,
+        "prefix": "pubg"
     },
     "cors": {
         "allowed_origins": [
@@ -38,7 +38,9 @@
         "request_delay": 6000,
         "max_retries": 3,
         "requests_per_minute": 10,
-        "old_enough_cap": 1570
+        "old_enough_min": 1570,
+        "cache": true,
+        "default_cache_ttl": 1440
     },
     "mongodb": {
         "uri": "mongodb://localhost:27017",
@@ -64,11 +66,11 @@
         "routing_key": "jobs",
         "exchange_name": "harvest_jobs",
         "queue_name": "jobs",
-        "prefetch_count": 10
+        "prefetch_count": 10,
+        "max_retries": 3
     },
     "jobs": {
         "worker_count": 5,
-        "default_max_retries": 3,
         "default_batch_size": 100,
         "job_types": [
             {

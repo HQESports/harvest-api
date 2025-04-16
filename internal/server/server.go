@@ -19,6 +19,7 @@ type Server struct {
 	pc     controller.PubgController
 	tc     controller.TokenController
 	jc     controller.JobController
+	mc     controller.MetricsController
 	config config.Config
 }
 
@@ -30,6 +31,8 @@ func New(config config.Config, db database.Database, cache cache.Cache, rabbit r
 
 	pc := controller.NewPUBG(db, client)
 
+	mc := controller.NewMetricsController(db)
+
 	tc := controller.NewToken(db)
 
 	server := Server{
@@ -37,6 +40,7 @@ func New(config config.Config, db database.Database, cache cache.Cache, rabbit r
 		pc:     pc,
 		tc:     tc,
 		jc:     jc,
+		mc:     mc,
 		config: config,
 	}
 

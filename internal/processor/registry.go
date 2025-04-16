@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/rs/zerolog/log"
@@ -10,6 +11,7 @@ type BatchRegistry interface {
 	Register(string, BaseBatchProcessor)
 	Get(string) (BaseBatchProcessor, bool)
 	AvailableProcessors() []string
+	CancelProcessByType(string) error
 }
 
 // Registry is a central registry for job processors
@@ -29,6 +31,16 @@ func NewRegistry(processors ...BaseBatchProcessor) BatchRegistry {
 	}
 
 	return &registry
+}
+
+func (r *Registry) CancelProcessByType(processType string) error {
+	process, ok := r.Get(processType)
+
+	if !ok {
+		return fmt.Errorf("process not found, can't cancel")
+	}
+
+	return process.Cancel()
 }
 
 // Register adds a processor to the registry

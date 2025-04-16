@@ -38,7 +38,10 @@ func NewClientFromConfig(cfg config.RabbitMQConfig) (Client, error) {
 		cfg.VHost,
 	)
 
-	conn, err := amqp.Dial(amqpURL)
+	conn, err := amqp.DialConfig(amqpURL, amqp.Config{
+		Heartbeat: 30 * time.Second, // Set heartbeat interval
+		Locale:    "en_US",
+	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to connect to RabbitMQ")
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)

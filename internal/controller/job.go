@@ -37,7 +37,7 @@ type JobController interface {
 	ListJobsByStatusAndUser(ctx context.Context, status model.JobStatus, userID string, limit, offset int) ([]*model.Job, error)
 
 	// UpdateJobProgress updates a job's progress and metrics
-	UpdateJobProgress(ctx context.Context, jobID string, progress int, metrics model.JobMetrics) error
+	UpdateJobProgress(ctx context.Context, jobID string, metrics model.JobMetrics) error
 
 	// AddJobResults adds results to a job
 	AddJobResults(ctx context.Context, jobID string, results []model.JobResult) error
@@ -82,6 +82,15 @@ func NewJobController(db database.JobDatabase, rabbitClient rabbitmq.Client,
 
 // CreateJob creates a new job and enqueues it
 func (c *jobController) CreateJob(ctx context.Context, jobType string, payload interface{}, tokenID string) (*model.Job, error) {
+	processor, ok := c.processRegistry.Get(jobType)
+	if !ok {
+		return nil, fmt.Errorf("job type not found in registry: %v", jobType)
+	}
+
+	if processor.IsActive() {
+		return nil, fmt.Errorf("job type already active in registry cannot start")
+	}
+
 	// Create a new job
 	job := &model.Job{
 		ID:        primitive.NewObjectID(),
@@ -89,19 +98,15 @@ func (c *jobController) CreateJob(ctx context.Context, jobType string, payload i
 		Status:    model.StatusQueued,
 		Progress:  0,
 		Payload:   payload, // Store the payload as-is for workers to use
-		Results:   []model.JobResult{},
-		ErrorList: []string{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		TokenID:   tokenID,
 		BatchSize: getBatchSize(c.jobsConfig, jobType),
 		Metrics: model.JobMetrics{
-			TotalItems:      0,
 			ProcessedItems:  0,
 			SuccessCount:    0,
 			WarningCount:    0,
 			FailureCount:    0,
-			BatchesTotal:    0,
 			BatchesComplete: 0,
 		},
 	}
@@ -186,8 +191,8 @@ func (c *jobController) ListJobsByStatusAndUser(ctx context.Context, status mode
 }
 
 // UpdateJobProgress updates a job's progress and metrics
-func (c *jobController) UpdateJobProgress(ctx context.Context, jobID string, progress int, metrics model.JobMetrics) error {
-	return c.db.UpdateJobProgress(ctx, jobID, progress, metrics)
+func (c *jobController) UpdateJobProgress(ctx context.Context, jobID string, metrics model.JobMetrics) error {
+	return c.db.UpdateJobProgress(ctx, jobID, metrics)
 }
 
 // AddJobResults adds results to a job
@@ -352,7 +357,7 @@ func (c *jobController) processDelivery(ctx context.Context, delivery amqp.Deliv
 	}
 
 	// Process the job
-	_, processingErr := processor.ProcessBatch(ctx, job)
+	_, processingErr := processor.StartJob(job)
 
 	// Update job based on processing result
 	if processingErr != nil {

@@ -158,8 +158,6 @@ func convertJobToResponse(job *model.Job) JobResponse {
 		TokenID:   job.TokenID, // Note: In your model, UserID is actually TokenID
 		CreatedAt: job.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: job.UpdatedAt.Format(time.RFC3339),
-		Results:   job.Results,
-		ErrorList: job.ErrorList,
 		Metrics:   job.Metrics,
 	}
 }

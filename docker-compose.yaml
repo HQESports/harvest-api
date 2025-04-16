@@ -20,8 +20,6 @@ services:
     container_name: harvest_redis
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
     networks:
       - harvest_network
     restart: always
@@ -52,5 +50,4 @@ networks:
 
 volumes:
   mongodb_data:
-  redis_data:
   rabbitmq_data:

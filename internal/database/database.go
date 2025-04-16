@@ -2,9 +2,7 @@ package database
 
 import (
 	"context"
-	"errors"
 	"harvest/internal/config"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -18,6 +16,7 @@ type Database interface {
 	PubgDatabase
 	TokenDatabase
 	JobDatabase
+	MatchMetricsDatabase
 }
 
 type mongoDB struct {
@@ -131,27 +130,4 @@ func (m *mongoDB) Health() error {
 	}
 
 	return nil
-}
-
-// Helper function to check for duplicate index error
-func isDuplicateIndexError(err error) bool {
-	// MongoDB returns error code 86 for duplicate index
-	var cmdErr mongo.CommandError
-	if errors.As(err, &cmdErr) {
-		return cmdErr.Code == 86
-	}
-
-	// For MongoDB driver versions that use different error types
-	var writeErr mongo.WriteException
-	if errors.As(err, &writeErr) {
-		for _, we := range writeErr.WriteErrors {
-			if we.Code == 86 {
-				return true
-			}
-		}
-	}
-
-	// Fallback to check error message (less reliable)
-	return strings.Contains(err.Error(), "already exists") ||
-		strings.Contains(err.Error(), "duplicate key error")
 }

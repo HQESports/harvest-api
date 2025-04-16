@@ -65,9 +65,10 @@ func main() {
 
 	// Creating processors
 	playerProcessor := processor.NewPlayerProcessor(db, pubgClient)
+	matchProcessor := processor.NewMatchProcessor(db, pubgClient)
 
 	// Registering processors
-	registry := processor.NewRegistry(playerProcessor)
+	registry := processor.NewRegistry(playerProcessor, matchProcessor)
 
 	// Create and start HTTP server
 	srv := server.New(*cfg, db, cache, rabbit, *pubgClient, registry)

@@ -33,25 +33,25 @@ type Entity struct {
 }
 
 type Match struct {
-	MatchID       string    `bson:"match_id,omitempty"`
-	ShardID       string    `bson:"shard_id,omitempty"`        // From shardId in API
-	MapName       string    `bson:"map_name,omitempty"`        // From mapName in API
-	GameMode      string    `bson:"game_mode,omitempty"`       // From gameMode in API
-	Duration      int       `bson:"duration,omitempty"`        // Match duration in seconds
-	IsCustomMatch bool      `bson:"is_custom_match,omitempty"` // From isCustomMatch in API
-	CreatedAt     time.Time `bson:"created_at,omitempty"`      // From createdAt in API
-	MatchType     string    `bson:"match_type,omitempty"`      // Not from API either [LIVE_SCRIM, RANKED, EVENT]
+	MatchID       string    `bson:"match_id"`
+	ShardID       string    `bson:"shard_id"`        // From shardId in API
+	MapName       string    `bson:"map_name"`        // From mapName in API
+	GameMode      string    `bson:"game_mode"`       // From gameMode in API
+	Duration      int       `bson:"duration"`        // Match duration in seconds
+	IsCustomMatch bool      `bson:"is_custom_match"` // From isCustomMatch in API
+	CreatedAt     time.Time `bson:"created_at"`      // From createdAt in API
+	MatchType     string    `bson:"match_type"`      // Not from API either [LIVE_SCRIM, RANKED, EVENT]
 
 	// Processing metadata
-	Processed   bool      `bson:"processed,omitempty"`    // Whether this match has been processed
-	ProcessedAt time.Time `bson:"processed_at,omitempty"` // When the match was processed
-	ImportedAt  time.Time `bson:"imported_at,omitempty"`  // When the match was imported to DB
+	Processed   bool      `bson:"processed"`    // Whether this match has been processed
+	ProcessedAt time.Time `bson:"processed_at"` // When the match was processed
+	ImportedAt  time.Time `bson:"imported_at"`  // When the match was imported to DB
 
-	// Statistics and counts
-	PlayerCount int `bson:"player_count,omitempty"` // Number of participants
-	TeamCount   int `bson:"team_count,omitempty"`   // Number of rosters/teams
+	// Statistics and countsx
+	PlayerCount int `bson:"player_count"` // Number of participants
+	TeamCount   int `bson:"team_count"`   // Number of rosters/teams
 
-	TelemetryURL string `bson:"telemetry_url,omitempty"` // URL to telemetry data
+	TelemetryURL string `bson:"telemetry_url"` // URL to telemetry data
 }
 
 // APIToken represents a service authentication token
@@ -64,4 +64,11 @@ type APIToken struct {
 	ExpiresAt time.Time          `bson:"expires_at,omitempty" json:"expires_at,omitempty"` // Optional expiration
 	LastUsed  time.Time          `bson:"last_used,omitempty" json:"last_used,omitempty"`
 	Revoked   bool               `bson:"revoked" json:"revoked"` // Whether the token has been revoked
+}
+
+// Add to your model package
+type BulkImportResult struct {
+	SuccessCount   int
+	DuplicateCount int
+	FailureCount   int
 }

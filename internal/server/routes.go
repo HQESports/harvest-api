@@ -31,7 +31,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 		api.POST("/names", s.namesHandler)
 		api.POST("/buildMatches", s.BuildMatchesFromFilter)
 		api.POST("/tournaments", s.tournamentsHandler)
-		api.POST("/expandPlayers", s.expandPlayers)
 
 		// Job routes - accessible to both ADMIN and SERVICE roles
 		jobs := api.Group("/jobs")
@@ -41,6 +40,13 @@ func (s *Server) RegisterRoutes() http.Handler {
 			jobs.GET("/all", s.ListAllJobsHandler) // For listing all jobs with optional status filter
 			jobs.GET("/types", s.ListAllAvailableJobTypes)
 			jobs.GET("/:id", s.GetJobHandler)
+		}
+
+		metrics := api.Group("/metrics")
+		{
+			metrics.GET("/total", s.GetTotalMatchCountHandler)
+			metrics.GET("/distribution", s.GetMatchDistributionHandler)
+			metrics.GET("/time-range", s.GetMatchMetricsForTimeRangeHandler)
 		}
 	}
 

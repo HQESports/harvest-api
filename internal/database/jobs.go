@@ -28,7 +28,7 @@ type JobDatabase interface {
 	UpdateJobStatus(ctx context.Context, id string, status model.JobStatus, errorMsg string) error
 
 	// Update job progress
-	UpdateJobProgress(ctx context.Context, id string, progress int, metrics model.JobMetrics) error
+	UpdateJobProgress(ctx context.Context, id string, metrics model.JobMetrics) error
 
 	// Add results to a job
 	AddJobResults(ctx context.Context, id string, results []model.JobResult) error
@@ -50,6 +50,9 @@ type JobDatabase interface {
 
 	// List jobs by status and user ID
 	ListJobsByStatusAndUserID(ctx context.Context, status model.JobStatus, userID string, limit, offset int) ([]*model.Job, error)
+
+	// Batch update job progress
+	BatchUpdateJobProgress(ctx context.Context, id string, batchMetrics []model.JobMetrics) error
 }
 
 // CreateJob creates a new job in the database
@@ -63,26 +66,6 @@ func (m *mongoDB) CreateJob(ctx context.Context, job *model.Job) error {
 	now := time.Now()
 	job.CreatedAt = now
 	job.UpdatedAt = now
-
-	// Initialize metrics if not already done
-	if job.Metrics.TotalItems == 0 {
-		job.Metrics.TotalItems = 0
-		job.Metrics.ProcessedItems = 0
-		job.Metrics.SuccessCount = 0
-		job.Metrics.WarningCount = 0
-		job.Metrics.FailureCount = 0
-		job.Metrics.BatchesTotal = 0
-		job.Metrics.BatchesComplete = 0
-	}
-
-	// Initialize empty slices if not already done
-	if job.Results == nil {
-		job.Results = []model.JobResult{}
-	}
-
-	if job.ErrorList == nil {
-		job.ErrorList = []string{}
-	}
 
 	// Insert the job
 	_, err := m.jobsCol.InsertOne(ctx, job)
@@ -171,8 +154,7 @@ func (m *mongoDB) UpdateJobStatus(ctx context.Context, id string, status model.J
 	return nil
 }
 
-// UpdateJobProgress updates a job's progress and metrics
-func (m *mongoDB) UpdateJobProgress(ctx context.Context, id string, progress int, metrics model.JobMetrics) error {
+func (m *mongoDB) UpdateJobProgress(ctx context.Context, id string, incrementMetrics model.JobMetrics) error {
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return err
@@ -180,19 +162,32 @@ func (m *mongoDB) UpdateJobProgress(ctx context.Context, id string, progress int
 
 	update := bson.M{
 		"$set": bson.M{
-			"progress":   progress,
-			"metrics":    metrics,
 			"updated_at": time.Now(),
+		},
+		"$inc": bson.M{
+			"metrics.processed_items":  incrementMetrics.ProcessedItems,
+			"metrics.success_count":    incrementMetrics.SuccessCount,
+			"metrics.warning_count":    incrementMetrics.WarningCount,
+			"metrics.failure_count":    incrementMetrics.FailureCount,
+			"metrics.batches_complete": incrementMetrics.BatchesComplete,
 		},
 	}
 
-	_, err = m.jobsCol.UpdateOne(ctx, bson.M{"_id": objectID}, update)
+	// Use FindOneAndUpdate for atomicity
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	var updatedJob model.Job
+	err = m.jobsCol.FindOneAndUpdate(ctx, bson.M{"_id": objectID}, update, opts).Decode(&updatedJob)
 	if err != nil {
-		log.Error().Err(err).Str("jobID", id).Int("progress", progress).Msg("Failed to update job progress")
+		log.Error().Err(err).Str("jobID", id).Msg("Failed to update job progress")
 		return err
 	}
 
-	log.Debug().Str("jobID", id).Int("progress", progress).Msg("Updated job progress")
+	log.Debug().Str("jobID", id).
+		Int("processed", updatedJob.Metrics.ProcessedItems).
+		Int("success", updatedJob.Metrics.SuccessCount).
+		Int("warning", updatedJob.Metrics.WarningCount).
+		Int("failure", updatedJob.Metrics.FailureCount).
+		Msg("Updated job progress")
 	return nil
 }
 
@@ -385,11 +380,63 @@ func (m *mongoDB) UpdateJobMetrics(ctx context.Context, id string, metrics model
 	}
 
 	log.Debug().Str("jobID", id).
-		Int("totalItems", metrics.TotalItems).
 		Int("processedItems", metrics.ProcessedItems).
 		Int("successCount", metrics.SuccessCount).
 		Int("warningCount", metrics.WarningCount).
 		Int("failureCount", metrics.FailureCount).
 		Msg("Updated job metrics")
+	return nil
+}
+
+// Implementation of BatchUpdateJobProgress
+func (m *mongoDB) BatchUpdateJobProgress(ctx context.Context, id string, batchMetrics []model.JobMetrics) error {
+	if len(batchMetrics) == 0 {
+		return nil
+	}
+
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+
+	// Aggregate all metrics
+	totalMetrics := model.JobMetrics{}
+	for _, metrics := range batchMetrics {
+		totalMetrics.ProcessedItems += metrics.ProcessedItems
+		totalMetrics.SuccessCount += metrics.SuccessCount
+		totalMetrics.WarningCount += metrics.WarningCount
+		totalMetrics.FailureCount += metrics.FailureCount
+		totalMetrics.BatchesComplete += metrics.BatchesComplete
+	}
+
+	// Create a single update operation
+	update := bson.M{
+		"$set": bson.M{
+			"updated_at": time.Now(),
+		},
+		"$inc": bson.M{
+			"metrics.processed_items":  totalMetrics.ProcessedItems,
+			"metrics.success_count":    totalMetrics.SuccessCount,
+			"metrics.warning_count":    totalMetrics.WarningCount,
+			"metrics.failure_count":    totalMetrics.FailureCount,
+			"metrics.batches_complete": totalMetrics.BatchesComplete,
+		},
+	}
+
+	// Use FindOneAndUpdate for atomicity
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	var updatedJob model.Job
+	err = m.jobsCol.FindOneAndUpdate(ctx, bson.M{"_id": objectID}, update, opts).Decode(&updatedJob)
+	if err != nil {
+		log.Error().Err(err).Str("jobID", id).Msg("Failed to batch update job progress")
+		return err
+	}
+
+	log.Debug().Str("jobID", id).
+		Int("processed", updatedJob.Metrics.ProcessedItems).
+		Int("success", updatedJob.Metrics.SuccessCount).
+		Int("warning", updatedJob.Metrics.WarningCount).
+		Int("failure", updatedJob.Metrics.FailureCount).
+		Msg("Batch updated job progress")
 	return nil
 }

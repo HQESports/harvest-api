@@ -21,6 +21,7 @@ type PubgDatabase interface {
 	GetUnprocessedMatches(context.Context, int) ([]model.Match, error)
 	GetMatchesByType(context.Context, string, int) ([]model.Match, error)
 	MarkMatchAsProcessed(context.Context, string) error
+	BulkImportMatches(ctx context.Context, matches []model.Match) (model.BulkImportResult, error)
 }
 
 // BulkUpsertEntities adds or updates multiple entities in the specified collection
@@ -265,4 +266,43 @@ func (m *mongoDB) MarkMatchAsProcessed(ctx context.Context, matchID string) erro
 	}
 
 	return nil
+}
+
+// Example implementation - you would add this to your database implementation file
+func (m *mongoDB) BulkImportMatches(ctx context.Context, matches []model.Match) (model.BulkImportResult, error) {
+	if len(matches) == 0 {
+		return model.BulkImportResult{}, nil
+	}
+
+	// Create bulk write operation
+	var operations []mongo.WriteModel
+
+	for _, match := range matches {
+		// Use upsert with filter on matchID and shardID
+		filter := bson.M{
+			"match_id": match.MatchID,
+			"shard_id": match.ShardID,
+		}
+
+		// Create upsert model
+		update := mongo.NewUpdateOneModel().
+			SetFilter(filter).
+			SetUpdate(bson.M{"$setOnInsert": match}).
+			SetUpsert(true)
+
+		operations = append(operations, update)
+	}
+
+	// Execute bulk write
+	result, err := m.matchesCol.BulkWrite(ctx, operations)
+	if err != nil {
+		return model.BulkImportResult{}, err
+	}
+
+	// Return results
+	return model.BulkImportResult{
+		SuccessCount:   int(result.UpsertedCount),
+		DuplicateCount: int(result.MatchedCount),
+		FailureCount:   0, // BulkWrite doesn't track individual failures this way
+	}, nil
 }
