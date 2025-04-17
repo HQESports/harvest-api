@@ -70,12 +70,12 @@
         "max_retries": 3
     },
     "jobs": {
-        "worker_count": 5,
-        "default_batch_size": 100,
+        "worker_count": 1,
+        "default_batch_size": 10,
         "job_types": [
             {
-                "type": "player-search-and-expand",
-                "batch_size": 50
+                "type": "player_expander_worker",
+                "batch_size": 100
             }
         ]
     }

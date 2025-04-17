@@ -12,7 +12,10 @@ import (
 )
 
 type PubgDatabase interface {
-	BulkUpsertEntities(context.Context, string, []model.Entity) error
+	BulkUpsertEntities(context.Context, *mongo.Collection, []model.Entity) (*mongo.BulkWriteResult, error)
+	BulkUpsertPlayers(context.Context, []model.Entity) (*mongo.BulkWriteResult, error)
+	BulkUpsertTournaments(context.Context, []model.Entity) (*mongo.BulkWriteResult, error)
+
 	GetActivePlayers(context.Context, int) ([]model.Entity, error)
 	GetActiveTournaments(context.Context, int) ([]model.Entity, error)
 	ImportMatch(context.Context, model.Match) (bool, error)
@@ -24,13 +27,19 @@ type PubgDatabase interface {
 	BulkImportMatches(ctx context.Context, matches []model.Match) (model.BulkImportResult, error)
 }
 
-// BulkUpsertEntities adds or updates multiple entities in the specified collection
-func (m *mongoDB) BulkUpsertEntities(ctx context.Context, collection string, entities []model.Entity) error {
-	if len(entities) == 0 {
-		return nil
-	}
+func (m *mongoDB) BulkUpsertPlayers(ctx context.Context, entities []model.Entity) (*mongo.BulkWriteResult, error) {
+	return m.BulkUpsertEntities(ctx, m.playersCol, entities)
+}
 
-	col := m.db.Collection(collection)
+func (m *mongoDB) BulkUpsertTournaments(ctx context.Context, entities []model.Entity) (*mongo.BulkWriteResult, error) {
+	return m.BulkUpsertEntities(ctx, m.tournamentsCol, entities)
+}
+
+// BulkUpsertEntities adds or updates multiple entities in the specified collection
+func (m *mongoDB) BulkUpsertEntities(ctx context.Context, col *mongo.Collection, entities []model.Entity) (*mongo.BulkWriteResult, error) {
+	if len(entities) == 0 {
+		return nil, nil
+	}
 
 	// Create a slice of write models for bulk operation
 	var models []mongo.WriteModel
@@ -60,13 +69,13 @@ func (m *mongoDB) BulkUpsertEntities(ctx context.Context, collection string, ent
 	opts := options.BulkWrite().SetOrdered(false)
 
 	// Execute bulk write operation
-	_, err := col.BulkWrite(ctx, models, opts)
+	writeResult, err := col.BulkWrite(ctx, models, opts)
 	if err != nil {
 		log.Error().Msgf("Failed to bulk upsert entities: %v", err)
-		return err
+		return nil, err
 	}
 
-	return nil
+	return writeResult, nil
 }
 
 // GetActiveEntities retrieves all active entities from the specified collection

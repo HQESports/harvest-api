@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -47,63 +46,7 @@ func New(config *config.Config) (Database, error) {
 	}
 
 	tokensCol := db.Collection("tokens")
-	// Create unique indexes on the tokens collection
-	indexModels := []mongo.IndexModel{
-		{
-			Keys:    bson.D{{Key: "token_hash", Value: 1}},
-			Options: options.Index().SetUnique(true),
-		},
-		{
-			Keys:    bson.D{{Key: "name", Value: 1}},
-			Options: options.Index().SetUnique(true),
-		},
-	}
-
 	jobsCol := db.Collection("jobs")
-	// Create indexes for jobs collection
-	jobIndexModels := []mongo.IndexModel{
-		{
-			// Index for status-based queries
-			Keys:    bson.D{{Key: "status", Value: 1}},
-			Options: options.Index(),
-		},
-		{
-			// Index for user-based queries
-			Keys:    bson.D{{Key: "user_id", Value: 1}},
-			Options: options.Index(),
-		},
-		{
-			// Compound index for status + user queries
-			Keys:    bson.D{{Key: "status", Value: 1}, {Key: "user_id", Value: 1}},
-			Options: options.Index(),
-		},
-		{
-			// Index for job type queries
-			Keys:    bson.D{{Key: "type", Value: 1}},
-			Options: options.Index(),
-		},
-		{
-			// Index for sorting by creation date
-			Keys:    bson.D{{Key: "created_at", Value: -1}},
-			Options: options.Index(),
-		},
-		{
-			// TTL index to auto-delete old completed/failed jobs after 30 days
-			Keys:    bson.D{{Key: "completed_at", Value: 1}},
-			Options: options.Index().SetExpireAfterSeconds(60 * 60 * 24 * 30 * 6),
-		},
-	}
-
-	_, err = tokensCol.Indexes().CreateMany(context.Background(), indexModels)
-
-	if err != nil {
-		log.Warn().Err(err).Str("Collection", "Tokens").Msg("Error creating indexes")
-	}
-
-	_, err = jobsCol.Indexes().CreateMany(context.Background(), jobIndexModels)
-	if err != nil {
-		log.Warn().Err(err).Str("Collection", "Jobs").Msg("Error creating indexes")
-	}
 
 	return &mongoDB{
 		client:         client,

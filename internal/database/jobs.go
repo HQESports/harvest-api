@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"errors"
 	"harvest/internal/model"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // JobDatabase defines job-related database operations
@@ -19,40 +17,22 @@ type JobDatabase interface {
 	CreateJob(ctx context.Context, job *model.Job) error
 
 	// Get a job by ID
-	GetJobByID(ctx context.Context, id string) (*model.Job, error)
+	GetJobByID(ctx context.Context, id primitive.ObjectID) (*model.Job, error)
 
-	// Update a job
-	UpdateJob(ctx context.Context, job *model.Job) error
+	// Update a job's status
+	UpdateJobStatus(ctx context.Context, id primitive.ObjectID, status model.JobStatus) error
 
-	// Update job status
-	UpdateJobStatus(ctx context.Context, id string, status model.JobStatus, errorMsg string) error
+	// List all jobs with optional filtering
+	ListJobs(ctx context.Context) ([]model.Job, error)
 
-	// Update job progress
-	UpdateJobProgress(ctx context.Context, id string, metrics model.JobMetrics) error
+	// Update a job's metrics and recalculate progress
+	UpdateJobMetrics(ctx context.Context, id primitive.ObjectID, metrics model.JobMetrics) error
 
-	// Add results to a job
-	AddJobResults(ctx context.Context, id string, results []model.JobResult) error
+	// Set the total number of batches for a job
+	SetJobTotalBatches(ctx context.Context, id primitive.ObjectID, totalBatches int) error
 
-	// Add error to a job
-	AddJobError(ctx context.Context, id string, errorMsg string) error
-
-	// List jobs by status
-	ListJobsByStatus(ctx context.Context, status model.JobStatus, limit, offset int) ([]*model.Job, error)
-
-	// List jobs by user ID
-	ListJobsByUserID(ctx context.Context, userID string, limit, offset int) ([]*model.Job, error)
-
-	// Count jobs by status
-	CountJobsByStatus(ctx context.Context, status model.JobStatus) (int64, error)
-
-	// List jobs by type
-	ListJobsByType(ctx context.Context, jobType string, limit, offset int) ([]*model.Job, error)
-
-	// List jobs by status and user ID
-	ListJobsByStatusAndUserID(ctx context.Context, status model.JobStatus, userID string, limit, offset int) ([]*model.Job, error)
-
-	// Batch update job progress
-	BatchUpdateJobProgress(ctx context.Context, id string, batchMetrics []model.JobMetrics) error
+	// Increment the batches complete count
+	IncrementJobBatchesComplete(ctx context.Context, id primitive.ObjectID, increment int) error
 }
 
 // CreateJob creates a new job in the database
@@ -78,365 +58,154 @@ func (m *mongoDB) CreateJob(ctx context.Context, job *model.Job) error {
 	return nil
 }
 
-// GetJobByID retrieves a job by its ID
-func (m *mongoDB) GetJobByID(ctx context.Context, id string) (*model.Job, error) {
-	objectID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return nil, err
-	}
-
+// GetJobByID retrieves a job from the database by its ID
+func (m *mongoDB) GetJobByID(ctx context.Context, id primitive.ObjectID) (*model.Job, error) {
 	var job model.Job
-	err = m.jobsCol.FindOne(ctx, bson.M{"_id": objectID}).Decode(&job)
+
+	filter := bson.M{"_id": id}
+	err := m.jobsCol.FindOne(ctx, filter).Decode(&job)
 	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, errors.New("job not found")
+		if err == mongo.ErrNoDocuments {
+			log.Debug().Str("jobID", id.Hex()).Msg("Job not found")
+			return nil, nil
 		}
-		log.Error().Err(err).Str("jobID", id).Msg("Failed to get job")
+		log.Error().Err(err).Str("jobID", id.Hex()).Msg("Failed to get job")
 		return nil, err
 	}
 
+	log.Debug().Str("jobID", id.Hex()).Msg("Retrieved job")
 	return &job, nil
 }
 
-// UpdateJob updates an entire job document
-func (m *mongoDB) UpdateJob(ctx context.Context, job *model.Job) error {
-	job.UpdatedAt = time.Now()
-
-	_, err := m.jobsCol.ReplaceOne(
-		ctx,
-		bson.M{"_id": job.ID},
-		job,
-	)
-
-	if err != nil {
-		log.Error().Err(err).Str("jobID", job.ID.Hex()).Msg("Failed to update job")
-		return err
-	}
-
-	log.Debug().Str("jobID", job.ID.Hex()).Str("status", string(job.Status)).Int("progress", job.Progress).Msg("Updated job")
-	return nil
-}
-
-// UpdateJobStatus updates a job's status and optionally adds an error message
-func (m *mongoDB) UpdateJobStatus(ctx context.Context, id string, status model.JobStatus, errorMsg string) error {
-	objectID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return err
-	}
-
+// UpdateJobStatus updates the status of a job
+func (m *mongoDB) UpdateJobStatus(ctx context.Context, id primitive.ObjectID, status model.JobStatus) error {
+	now := time.Now()
 	update := bson.M{
 		"$set": bson.M{
 			"status":     status,
-			"updated_at": time.Now(),
+			"updated_at": now,
 		},
 	}
 
-	// If there's an error message, add it to the error list
-	if errorMsg != "" {
-		update["$push"] = bson.M{
-			"error_list": errorMsg,
-		}
-	}
-
-	// If the job is completed, set the completed_at timestamp
-	if status == model.StatusCompleted {
-		now := time.Now()
+	// If the status is completed or failed, set the completed_at time
+	if status == model.StatusCompleted || status == model.StatusFailed || status == model.StatusCancelled {
 		update["$set"].(bson.M)["completed_at"] = now
 	}
 
-	_, err = m.jobsCol.UpdateOne(ctx, bson.M{"_id": objectID}, update)
+	result, err := m.jobsCol.UpdateOne(ctx, bson.M{"_id": id}, update)
 	if err != nil {
-		log.Error().Err(err).Str("jobID", id).Str("status", string(status)).Msg("Failed to update job status")
-		return err
-	}
-
-	log.Debug().Str("jobID", id).Str("status", string(status)).Msg("Updated job status")
-	return nil
-}
-
-func (m *mongoDB) UpdateJobProgress(ctx context.Context, id string, incrementMetrics model.JobMetrics) error {
-	objectID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return err
-	}
-
-	update := bson.M{
-		"$set": bson.M{
-			"updated_at": time.Now(),
-		},
-		"$inc": bson.M{
-			"metrics.processed_items":  incrementMetrics.ProcessedItems,
-			"metrics.success_count":    incrementMetrics.SuccessCount,
-			"metrics.warning_count":    incrementMetrics.WarningCount,
-			"metrics.failure_count":    incrementMetrics.FailureCount,
-			"metrics.batches_complete": incrementMetrics.BatchesComplete,
-		},
-	}
-
-	// Use FindOneAndUpdate for atomicity
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
-	var updatedJob model.Job
-	err = m.jobsCol.FindOneAndUpdate(ctx, bson.M{"_id": objectID}, update, opts).Decode(&updatedJob)
-	if err != nil {
-		log.Error().Err(err).Str("jobID", id).Msg("Failed to update job progress")
-		return err
-	}
-
-	log.Debug().Str("jobID", id).
-		Int("processed", updatedJob.Metrics.ProcessedItems).
-		Int("success", updatedJob.Metrics.SuccessCount).
-		Int("warning", updatedJob.Metrics.WarningCount).
-		Int("failure", updatedJob.Metrics.FailureCount).
-		Msg("Updated job progress")
-	return nil
-}
-
-// AddJobResults adds results to a job's results array
-func (m *mongoDB) AddJobResults(ctx context.Context, id string, results []model.JobResult) error {
-	if len(results) == 0 {
-		return nil
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return err
-	}
-
-	update := bson.M{
-		"$push": bson.M{
-			"results": bson.M{
-				"$each": results,
-			},
-		},
-		"$set": bson.M{
-			"updated_at": time.Now(),
-		},
-	}
-
-	_, err = m.jobsCol.UpdateOne(ctx, bson.M{"_id": objectID}, update)
-	if err != nil {
-		log.Error().Err(err).Str("jobID", id).Int("resultCount", len(results)).Msg("Failed to add job results")
-		return err
-	}
-
-	log.Debug().Str("jobID", id).Int("resultCount", len(results)).Msg("Added job results")
-	return nil
-}
-
-// AddJobError adds an error message to a job's error list
-func (m *mongoDB) AddJobError(ctx context.Context, id string, errorMsg string) error {
-	objectID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return err
-	}
-
-	update := bson.M{
-		"$push": bson.M{
-			"error_list": errorMsg,
-		},
-		"$set": bson.M{
-			"updated_at": time.Now(),
-		},
-	}
-
-	_, err = m.jobsCol.UpdateOne(ctx, bson.M{"_id": objectID}, update)
-	if err != nil {
-		log.Error().Err(err).Str("jobID", id).Str("error", errorMsg).Msg("Failed to add job error")
-		return err
-	}
-
-	log.Debug().Str("jobID", id).Str("error", errorMsg).Msg("Added job error")
-	return nil
-}
-
-// ListJobsByStatus retrieves jobs by their status
-func (m *mongoDB) ListJobsByStatus(ctx context.Context, status model.JobStatus, limit, offset int) ([]*model.Job, error) {
-	opts := options.Find().
-		SetLimit(int64(limit)).
-		SetSkip(int64(offset)).
-		SetSort(bson.M{"created_at": -1})
-
-	cursor, err := m.jobsCol.Find(ctx, bson.M{"status": status}, opts)
-	if err != nil {
-		log.Error().Err(err).Str("status", string(status)).Msg("Failed to list jobs by status")
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var jobs []*model.Job
-	if err := cursor.All(ctx, &jobs); err != nil {
-		log.Error().Err(err).Msg("Failed to decode jobs")
-		return nil, err
-	}
-
-	return jobs, nil
-}
-
-// ListJobsByUserID retrieves jobs by user ID
-func (m *mongoDB) ListJobsByUserID(ctx context.Context, userID string, limit, offset int) ([]*model.Job, error) {
-	opts := options.Find().
-		SetLimit(int64(limit)).
-		SetSkip(int64(offset)).
-		SetSort(bson.M{"created_at": -1})
-
-	cursor, err := m.jobsCol.Find(ctx, bson.M{"user_id": userID}, opts)
-	if err != nil {
-		log.Error().Err(err).Str("userID", userID).Msg("Failed to list jobs by user ID")
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var jobs []*model.Job
-	if err := cursor.All(ctx, &jobs); err != nil {
-		log.Error().Err(err).Msg("Failed to decode jobs")
-		return nil, err
-	}
-
-	return jobs, nil
-}
-
-// CountJobsByStatus counts jobs with a specific status
-func (m *mongoDB) CountJobsByStatus(ctx context.Context, status model.JobStatus) (int64, error) {
-	count, err := m.jobsCol.CountDocuments(ctx, bson.M{"status": status})
-	if err != nil {
-		log.Error().Err(err).Str("status", string(status)).Msg("Failed to count jobs by status")
-		return 0, err
-	}
-
-	return count, nil
-}
-
-// ListJobsByType retrieves jobs by their type
-func (m *mongoDB) ListJobsByType(ctx context.Context, jobType string, limit, offset int) ([]*model.Job, error) {
-	opts := options.Find().
-		SetLimit(int64(limit)).
-		SetSkip(int64(offset)).
-		SetSort(bson.M{"created_at": -1})
-
-	cursor, err := m.jobsCol.Find(ctx, bson.M{"type": jobType}, opts)
-	if err != nil {
-		log.Error().Err(err).Str("type", jobType).Msg("Failed to list jobs by type")
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var jobs []*model.Job
-	if err := cursor.All(ctx, &jobs); err != nil {
-		log.Error().Err(err).Msg("Failed to decode jobs")
-		return nil, err
-	}
-
-	return jobs, nil
-}
-
-// ListJobsByStatusAndUserID retrieves jobs by both status and user ID
-func (m *mongoDB) ListJobsByStatusAndUserID(ctx context.Context, status model.JobStatus, userID string, limit, offset int) ([]*model.Job, error) {
-	opts := options.Find().
-		SetLimit(int64(limit)).
-		SetSkip(int64(offset)).
-		SetSort(bson.M{"created_at": -1})
-
-	cursor, err := m.jobsCol.Find(ctx, bson.M{
-		"status":  status,
-		"user_id": userID,
-	}, opts)
-	if err != nil {
-		log.Error().Err(err).Str("status", string(status)).Str("userID", userID).Msg("Failed to list jobs by status and user ID")
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var jobs []*model.Job
-	if err := cursor.All(ctx, &jobs); err != nil {
-		log.Error().Err(err).Msg("Failed to decode jobs")
-		return nil, err
-	}
-
-	return jobs, nil
-}
-
-// UpdateJobMetrics updates just the metrics for a job
-func (m *mongoDB) UpdateJobMetrics(ctx context.Context, id string, metrics model.JobMetrics) error {
-	objectID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return err
-	}
-
-	update := bson.M{
-		"$set": bson.M{
-			"metrics":    metrics,
-			"updated_at": time.Now(),
-		},
-	}
-
-	result, err := m.jobsCol.UpdateOne(ctx, bson.M{"_id": objectID}, update)
-	if err != nil {
-		log.Error().Err(err).Str("jobID", id).Msg("Failed to update job metrics")
+		log.Error().Err(err).Str("jobID", id.Hex()).Str("status", string(status)).Msg("Failed to update job status")
 		return err
 	}
 
 	if result.MatchedCount == 0 {
-		return errors.New("job not found")
+		log.Debug().Str("jobID", id.Hex()).Msg("Job not found for status update")
+		return mongo.ErrNoDocuments
 	}
 
-	log.Debug().Str("jobID", id).
-		Int("processedItems", metrics.ProcessedItems).
-		Int("successCount", metrics.SuccessCount).
-		Int("warningCount", metrics.WarningCount).
-		Int("failureCount", metrics.FailureCount).
-		Msg("Updated job metrics")
+	log.Debug().Str("jobID", id.Hex()).Str("status", string(status)).Msg("Updated job status")
 	return nil
 }
 
-// Implementation of BatchUpdateJobProgress
-func (m *mongoDB) BatchUpdateJobProgress(ctx context.Context, id string, batchMetrics []model.JobMetrics) error {
-	if len(batchMetrics) == 0 {
-		return nil
-	}
-
-	objectID, err := primitive.ObjectIDFromHex(id)
+// ListJobs retrieves all jobs from the database with optional filtering
+func (m *mongoDB) ListJobs(ctx context.Context) ([]model.Job, error) {
+	cursor, err := m.jobsCol.Find(ctx, bson.M{})
 	if err != nil {
-		return err
+		log.Error().Err(err).Msg("Failed to list jobs")
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var jobs []model.Job
+	if err = cursor.All(ctx, &jobs); err != nil {
+		log.Error().Err(err).Msg("Failed to decode jobs")
+		return nil, err
 	}
 
-	// Aggregate all metrics
-	totalMetrics := model.JobMetrics{}
-	for _, metrics := range batchMetrics {
-		totalMetrics.ProcessedItems += metrics.ProcessedItems
-		totalMetrics.SuccessCount += metrics.SuccessCount
-		totalMetrics.WarningCount += metrics.WarningCount
-		totalMetrics.FailureCount += metrics.FailureCount
-		totalMetrics.BatchesComplete += metrics.BatchesComplete
-	}
+	log.Debug().Int("count", len(jobs)).Msg("Retrieved jobs list")
+	return jobs, nil
+}
 
-	// Create a single update operation
+// UpdateJobMetrics increments the metrics of a job by the provided values
+func (m *mongoDB) UpdateJobMetrics(ctx context.Context, id primitive.ObjectID, metrics model.JobMetrics) error {
 	update := bson.M{
+		"$inc": bson.M{
+			"metrics.processed_items": metrics.ProcessedItems,
+			"metrics.success_count":   metrics.SuccessCount,
+			"metrics.failure_count":   metrics.FailureCount,
+			"metrics.warning_count":   metrics.WarningCount,
+		},
 		"$set": bson.M{
 			"updated_at": time.Now(),
 		},
-		"$inc": bson.M{
-			"metrics.processed_items":  totalMetrics.ProcessedItems,
-			"metrics.success_count":    totalMetrics.SuccessCount,
-			"metrics.warning_count":    totalMetrics.WarningCount,
-			"metrics.failure_count":    totalMetrics.FailureCount,
-			"metrics.batches_complete": totalMetrics.BatchesComplete,
-		},
 	}
 
-	// Use FindOneAndUpdate for atomicity
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
-	var updatedJob model.Job
-	err = m.jobsCol.FindOneAndUpdate(ctx, bson.M{"_id": objectID}, update, opts).Decode(&updatedJob)
+	result, err := m.jobsCol.UpdateOne(ctx, bson.M{"_id": id}, update)
 	if err != nil {
-		log.Error().Err(err).Str("jobID", id).Msg("Failed to batch update job progress")
+		log.Error().Err(err).Str("jobID", id.Hex()).Msg("Failed to increment job metrics")
 		return err
 	}
 
-	log.Debug().Str("jobID", id).
-		Int("processed", updatedJob.Metrics.ProcessedItems).
-		Int("success", updatedJob.Metrics.SuccessCount).
-		Int("warning", updatedJob.Metrics.WarningCount).
-		Int("failure", updatedJob.Metrics.FailureCount).
-		Msg("Batch updated job progress")
+	if result.MatchedCount == 0 {
+		log.Debug().Str("jobID", id.Hex()).Msg("Job not found for metrics update")
+		return mongo.ErrNoDocuments
+	}
+
+	log.Debug().Str("jobID", id.Hex()).
+		Int("processed_increment", metrics.ProcessedItems).
+		Int("success_increment", metrics.SuccessCount).
+		Int("failure_increment", metrics.FailureCount).
+		Int("batches_increment", metrics.BatchesComplete).
+		Msg("Incremented job metrics")
+	return nil
+}
+
+// SetJobTotalBatches updates only the total_batches field of a job's metrics
+func (m *mongoDB) SetJobTotalBatches(ctx context.Context, id primitive.ObjectID, totalBatches int) error {
+	update := bson.M{
+		"$set": bson.M{
+			"metrics.total_batches": totalBatches,
+			"updated_at":            time.Now(),
+		},
+	}
+
+	result, err := m.jobsCol.UpdateOne(ctx, bson.M{"_id": id}, update)
+	if err != nil {
+		log.Error().Err(err).Str("jobID", id.Hex()).Int("totalBatches", totalBatches).Msg("Failed to set job total batches")
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		log.Debug().Str("jobID", id.Hex()).Msg("Job not found for total batches update")
+		return mongo.ErrNoDocuments
+	}
+
+	log.Debug().Str("jobID", id.Hex()).Int("totalBatches", totalBatches).Msg("Set job total batches")
+	return nil
+}
+
+// IncrementJobBatchesComplete increments only the batches_complete field of a job's metrics
+func (m *mongoDB) IncrementJobBatchesComplete(ctx context.Context, id primitive.ObjectID, increment int) error {
+	update := bson.M{
+		"$inc": bson.M{
+			"metrics.batches_complete": increment,
+		},
+		"$set": bson.M{
+			"updated_at": time.Now(),
+		},
+	}
+
+	result, err := m.jobsCol.UpdateOne(ctx, bson.M{"_id": id}, update)
+	if err != nil {
+		log.Error().Err(err).Str("jobID", id.Hex()).Int("increment", increment).Msg("Failed to increment job batches complete")
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		log.Debug().Str("jobID", id.Hex()).Msg("Job not found for batches complete increment")
+		return mongo.ErrNoDocuments
+	}
+
+	log.Debug().Str("jobID", id.Hex()).Int("increment", increment).Msg("Incremented job batches complete")
 	return nil
 }

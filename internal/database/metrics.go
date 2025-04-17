@@ -137,6 +137,20 @@ func (m *mongoDB) GetMatchMetricsForTimeRange(ctx context.Context, startTime, en
 		return nil, err
 	}
 
+	// Get total count of players
+	playerCount, err := m.playersCol.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to count players")
+		return nil, err
+	}
+
+	// Get tournament count
+	touramentCount, err := m.tournamentsCol.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to count players")
+		return nil, err
+	}
+
 	// Group by map_name for the time range
 	mapPipeline := mongo.Pipeline{
 		{{Key: "$match", Value: filter}},
@@ -277,6 +291,8 @@ func (m *mongoDB) GetMatchMetricsForTimeRange(ctx context.Context, startTime, en
 	// Compile all metrics into a single result
 	metrics := &model.MatchMetrics{
 		TotalMatches:          totalCount,
+		TotalPlayers:          playerCount,
+		TotalTournaments:      touramentCount,
 		MapDistribution:       mapCounts,
 		TypeDistribution:      typeCounts,
 		ProcessedDistribution: proccessedDistro,
@@ -286,6 +302,8 @@ func (m *mongoDB) GetMatchMetricsForTimeRange(ctx context.Context, startTime, en
 			End:   endTime,
 		},
 	}
+	// TODO TRACK EVENT DATA
+	metrics.TypeDistribution["event"] = 0
 
 	return metrics, nil
 }

@@ -130,7 +130,7 @@ func (pc *pubgController) CreatePlayers(names []string) (int, error) {
 	}
 
 	// Save the entities to the database
-	err = pc.db.BulkUpsertEntities(context.Background(), "players", entities)
+	_, err = pc.db.BulkUpsertPlayers(context.Background(), entities)
 	if err != nil {
 		log.Error().Str("job_id", jobID).Err(err).Msg("Failed to save player entities")
 		return 0, err
@@ -172,7 +172,7 @@ func (pc *pubgController) CreateTournaments() (int, error) {
 	}
 
 	// Save the entities to the database
-	err = pc.db.BulkUpsertEntities(context.Background(), "tournaments", entities)
+	_, err = pc.db.BulkUpsertTournaments(context.Background(), entities)
 	if err != nil {
 		log.Error().Str("job_id", jobID).Err(err).Msg("Failed to save tournament entities")
 		return 0, err

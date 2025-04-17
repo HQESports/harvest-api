@@ -9,7 +9,7 @@ import (
 	"harvest/internal/config"
 	"harvest/internal/database"
 	"harvest/internal/model"
-	"harvest/internal/processor"
+	"harvest/internal/orchestrator"
 	"harvest/internal/rabbitmq"
 	"sync"
 	"time"
@@ -24,35 +24,22 @@ type JobController interface {
 	// CreateJob creates a new job and enqueues it for processing
 	CreateJob(ctx context.Context, jobType string, payload interface{}, userID string) (*model.Job, error)
 
-	// GetJob retrieves a job by ID
-	GetJob(ctx context.Context, jobID string) (*model.Job, error)
-
-	// ListJobs lists jobs with pagination
-	ListJobs(ctx context.Context, userID string, limit, offset int) ([]*model.Job, error)
-
-	// ListJobsByStatus lists jobs by status with pagination
-	ListJobsByStatus(ctx context.Context, status model.JobStatus, limit, offset int) ([]*model.Job, error)
-
-	// ListJobsByStatusAndUser lists jobs by status and user with pagination
-	ListJobsByStatusAndUser(ctx context.Context, status model.JobStatus, userID string, limit, offset int) ([]*model.Job, error)
-
-	// UpdateJobProgress updates a job's progress and metrics
-	UpdateJobProgress(ctx context.Context, jobID string, metrics model.JobMetrics) error
-
-	// AddJobResults adds results to a job
-	AddJobResults(ctx context.Context, jobID string, results []model.JobResult) error
-
-	// AddJobError adds an error to a job
-	AddJobError(ctx context.Context, jobID string, errorMsg string) error
-
 	// ProcessJobs starts consuming and processing jobs
 	ProcessJobs(ctx context.Context) error
 
 	// Get Available Job Types
 	GetAvailableJobTypes() map[string]string
 
+	// Cancel Jobs by Type
+	CancelJob(string) error
+
 	// StopProcessing stops the job processing
 	StopProcessing()
+
+	// List all the jobs
+	ListJobs(context.Context) ([]model.Job, error)
+
+	GetJob(context.Context, string) (*model.Job, error)
 }
 
 // jobController implements JobController
@@ -61,7 +48,7 @@ type jobController struct {
 	rabbitClient    rabbitmq.Client
 	rabbitConfig    config.RabbitMQConfig
 	jobsConfig      config.JobsConfig
-	processRegistry processor.BatchRegistry
+	processRegistry orchestrator.WorkerRegistry
 	consumerTag     string
 	shutdown        chan struct{}
 	wg              sync.WaitGroup
@@ -69,7 +56,7 @@ type jobController struct {
 
 // NewJobController creates a new job controller
 func NewJobController(db database.JobDatabase, rabbitClient rabbitmq.Client,
-	rabbitConfig config.RabbitMQConfig, jobsConfig config.JobsConfig, registry processor.BatchRegistry) JobController {
+	rabbitConfig config.RabbitMQConfig, jobsConfig config.JobsConfig, registry orchestrator.WorkerRegistry) JobController {
 	return &jobController{
 		db:              db,
 		rabbitClient:    rabbitClient,
@@ -78,6 +65,38 @@ func NewJobController(db database.JobDatabase, rabbitClient rabbitmq.Client,
 		processRegistry: registry,
 		shutdown:        make(chan struct{}),
 	}
+}
+
+func (c *jobController) CancelJob(jobType string) error {
+	worker, ok := c.processRegistry.Get(jobType)
+	jobID := *worker.ActiveJobID()
+	if !worker.IsActive() {
+		return fmt.Errorf("job type is not active: %v", jobType)
+	}
+
+	if !ok {
+		return fmt.Errorf("job type does not exist: %v", jobType)
+	}
+
+	err := worker.Cancel()
+	if err != nil {
+		return err
+	}
+
+	return c.db.UpdateJobStatus(context.TODO(), jobID, model.StatusCancelled)
+}
+
+func (c *jobController) GetJob(ctx context.Context, jobID string) (*model.Job, error) {
+	jobIDPrim, err := primitive.ObjectIDFromHex(jobID)
+	if err != nil {
+		return nil, err
+	}
+	return c.db.GetJobByID(ctx, jobIDPrim)
+}
+
+// ListJob implements JobController.
+func (c *jobController) ListJobs(ctx context.Context) ([]model.Job, error) {
+	return c.db.ListJobs(ctx)
 }
 
 // CreateJob creates a new job and enqueues it
@@ -96,7 +115,6 @@ func (c *jobController) CreateJob(ctx context.Context, jobType string, payload i
 		ID:        primitive.NewObjectID(),
 		Type:      jobType,
 		Status:    model.StatusQueued,
-		Progress:  0,
 		Payload:   payload, // Store the payload as-is for workers to use
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -108,6 +126,7 @@ func (c *jobController) CreateJob(ctx context.Context, jobType string, payload i
 			WarningCount:    0,
 			FailureCount:    0,
 			BatchesComplete: 0,
+			TotalBatches:    0,
 		},
 	}
 
@@ -121,7 +140,7 @@ func (c *jobController) CreateJob(ctx context.Context, jobType string, payload i
 	err = c.enqueueJob(job)
 	if err != nil {
 		// Update job status to failed if enqueueing fails
-		c.db.UpdateJobStatus(ctx, job.ID.Hex(), model.StatusFailed, fmt.Sprintf("Failed to enqueue job: %s", err.Error()))
+		c.db.UpdateJobStatus(ctx, job.ID, model.StatusFailed)
 		return job, fmt.Errorf("failed to enqueue job: %w", err)
 	}
 
@@ -168,41 +187,6 @@ func (c *jobController) enqueueJob(job *model.Job) error {
 	}
 
 	return nil
-}
-
-// GetJob retrieves a job by ID
-func (c *jobController) GetJob(ctx context.Context, jobID string) (*model.Job, error) {
-	return c.db.GetJobByID(ctx, jobID)
-}
-
-// ListJobs lists jobs with pagination
-func (c *jobController) ListJobs(ctx context.Context, userID string, limit, offset int) ([]*model.Job, error) {
-	return c.db.ListJobsByUserID(ctx, userID, limit, offset)
-}
-
-// ListJobsByStatus lists jobs by status with pagination
-func (c *jobController) ListJobsByStatus(ctx context.Context, status model.JobStatus, limit, offset int) ([]*model.Job, error) {
-	return c.db.ListJobsByStatus(ctx, status, limit, offset)
-}
-
-// ListJobsByStatusAndUser lists jobs by status and user with pagination
-func (c *jobController) ListJobsByStatusAndUser(ctx context.Context, status model.JobStatus, userID string, limit, offset int) ([]*model.Job, error) {
-	return c.db.ListJobsByStatusAndUserID(ctx, status, userID, limit, offset)
-}
-
-// UpdateJobProgress updates a job's progress and metrics
-func (c *jobController) UpdateJobProgress(ctx context.Context, jobID string, metrics model.JobMetrics) error {
-	return c.db.UpdateJobProgress(ctx, jobID, metrics)
-}
-
-// AddJobResults adds results to a job
-func (c *jobController) AddJobResults(ctx context.Context, jobID string, results []model.JobResult) error {
-	return c.db.AddJobResults(ctx, jobID, results)
-}
-
-// AddJobError adds an error to a job
-func (c *jobController) AddJobError(ctx context.Context, jobID string, errorMsg string) error {
-	return c.db.AddJobError(ctx, jobID, errorMsg)
 }
 
 // ProcessJobs starts consuming jobs from RabbitMQ
@@ -309,23 +293,24 @@ func (c *jobController) startConsumer(ctx context.Context, queueName, consumerTa
 // processDelivery handles a single delivery
 func (c *jobController) processDelivery(ctx context.Context, delivery amqp.Delivery) {
 	// Extract job ID from message headers
-	jobID, ok := delivery.Headers["job_id"].(string)
+	jobIDStr, ok := delivery.Headers["job_id"].(string)
 	if !ok {
 		log.Error().Msg("Message missing job_id header, rejecting")
 		delivery.Nack(false, false) // Don't requeue malformed messages
 		return
 	}
+	jobID, _ := primitive.ObjectIDFromHex(jobIDStr)
 
 	// Extract job type from message headers
 	jobType, ok := delivery.Headers["job_type"].(string)
 	if !ok {
-		log.Error().Str("jobId", jobID).Msg("Message missing job_type header, rejecting")
+		log.Error().Str("jobId", jobID.Hex()).Msg("Message missing job_type header, rejecting")
 		delivery.Nack(false, false) // Don't requeue malformed messages
 		return
 	}
 
 	logger := log.With().
-		Str("jobId", jobID).
+		Str("jobId", jobID.Hex()).
 		Str("jobType", jobType).
 		Logger()
 
@@ -343,13 +328,13 @@ func (c *jobController) processDelivery(ctx context.Context, delivery amqp.Deliv
 	processor, exists := c.processRegistry.Get(jobType)
 	if !exists {
 		logger.Error().Msg("No processor registered for job type")
-		c.db.UpdateJobStatus(ctx, jobID, model.StatusFailed, "No processor registered for job type")
+		c.db.UpdateJobStatus(ctx, jobID, model.StatusFailed)
 		delivery.Ack(false)
 		return
 	}
 
 	// Update job status to processing
-	err = c.db.UpdateJobStatus(ctx, jobID, model.StatusProcessing, "")
+	err = c.db.UpdateJobStatus(ctx, jobID, model.StatusProcessing)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to update job status to processing")
 		delivery.Nack(false, false)
@@ -357,18 +342,22 @@ func (c *jobController) processDelivery(ctx context.Context, delivery amqp.Deliv
 	}
 
 	// Process the job
-	_, processingErr := processor.StartJob(job)
+	cancelled, err := processor.StartWorker(job)
 
 	// Update job based on processing result
-	if processingErr != nil {
-		logger.Error().Err(processingErr).Msg("Job processing failed")
-		failErr := c.db.UpdateJobStatus(ctx, jobID, model.StatusFailed, processingErr.Error())
+	if err != nil {
+		logger.Error().Err(err).Msg("Job processing failed")
+		failErr := c.db.UpdateJobStatus(ctx, jobID, model.StatusFailed)
 		if failErr != nil {
 			logger.Error().Err(failErr).Msg("Failed to update job status to failed")
 		}
 	} else {
 		// Job processed successfully
-		completeErr := c.db.UpdateJobStatus(ctx, jobID, model.StatusCompleted, "")
+		status := model.StatusCompleted
+		if cancelled {
+			status = model.StatusCancelled
+		}
+		completeErr := c.db.UpdateJobStatus(ctx, jobID, status)
 		if completeErr != nil {
 			logger.Error().Err(completeErr).Msg("Failed to update job status to completed")
 		}

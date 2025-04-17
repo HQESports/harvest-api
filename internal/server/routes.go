@@ -36,10 +36,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 		jobs := api.Group("/jobs")
 		{
 			jobs.POST("", s.CreateJobHandler)
-			jobs.GET("", s.ListJobsHandler)
-			jobs.GET("/all", s.ListAllJobsHandler) // For listing all jobs with optional status filter
+			jobs.GET("/", s.ListJobsHandler) // For listing all jobs with optional status filter
 			jobs.GET("/types", s.ListAllAvailableJobTypes)
 			jobs.GET("/:id", s.GetJobHandler)
+			jobs.DELETE("/:type", s.CancelJobHandler)
 		}
 
 		metrics := api.Group("/metrics")

@@ -24,6 +24,8 @@ type PlayerStats struct {
 
 type MatchMetrics struct {
 	TotalMatches          int64            `json:"total_matches"`
+	TotalPlayers          int64            `json:"total_players"`
+	TotalTournaments      int64            `json:"total_tournaments"`
 	MapDistribution       map[string]int64 `json:"map_distribution"`
 	TypeDistribution      map[string]int64 `json:"type_distribution"`
 	ProcessedDistribution map[string]int64 `json:"processed_distribution"`

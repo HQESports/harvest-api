@@ -27,14 +27,6 @@ const (
 	ResultFailure JobResultType = "failure"
 )
 
-// JobResult represents the outcome of processing a single item within a job
-type JobResult struct {
-	Type       JobResultType `bson:"type" json:"type"`
-	Message    string        `bson:"message" json:"message"`
-	Identifier string        `bson:"identifier,omitempty" json:"identifier,omitempty"`
-	Timestamp  time.Time     `bson:"timestamp" json:"timestamp"`
-}
-
 // JobMetrics tracks the processing statistics for a job
 type JobMetrics struct {
 	ProcessedItems  int `bson:"processed_items" json:"processed_items"`
@@ -42,6 +34,7 @@ type JobMetrics struct {
 	WarningCount    int `bson:"warning_count" json:"warning_count"`
 	FailureCount    int `bson:"failure_count" json:"failure_count"`
 	BatchesComplete int `bson:"batches_complete" json:"batches_complete"`
+	TotalBatches    int `bson:"total_batches" json:"total_batches"`
 }
 
 // Job represents a background processing task
@@ -49,7 +42,6 @@ type Job struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Type        string             `bson:"type" json:"type"`
 	Status      JobStatus          `bson:"status" json:"status"`
-	Progress    int                `bson:"progress" json:"progress"`
 	Metrics     JobMetrics         `bson:"metrics" json:"metrics"`
 	Payload     interface{}        `bson:"payload" json:"payload"`
 	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`

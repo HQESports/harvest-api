@@ -5,7 +5,8 @@ import (
 	"harvest/internal/cache"
 	"harvest/internal/config"
 	"harvest/internal/database"
-	"harvest/internal/processor"
+	"harvest/internal/orchestrator"
+	"harvest/internal/orchestrator/worker"
 	"harvest/internal/rabbitmq"
 	"harvest/internal/server"
 	"harvest/pkg/pubg"
@@ -64,11 +65,12 @@ func main() {
 	// Initialize base process registry for job workers
 
 	// Creating processors
-	playerProcessor := processor.NewPlayerProcessor(db, pubgClient)
-	matchProcessor := processor.NewMatchProcessor(db, pubgClient)
+	playerWorker := worker.NewPlayerExpanderWorker(pubgClient, db)
+	//matchProcessor := processor.NewMatchProcessor(db, pubgClient)
+	matchWorker := worker.NewMatchExpanderWorker(pubgClient, db)
 
 	// Registering processors
-	registry := processor.NewRegistry(playerProcessor, matchProcessor)
+	registry := orchestrator.NewWorkerRegistry(playerWorker, matchWorker)
 
 	// Create and start HTTP server
 	srv := server.New(*cfg, db, cache, rabbit, *pubgClient, registry)
