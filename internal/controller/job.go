@@ -125,6 +125,7 @@ func (c *jobController) CreateJob(ctx context.Context, jobType string, payload i
 			SuccessCount:    0,
 			WarningCount:    0,
 			FailureCount:    0,
+			InvalidCount:    0,
 			BatchesComplete: 0,
 			TotalBatches:    0,
 		},

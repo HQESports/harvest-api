@@ -31,6 +31,7 @@ const (
 type JobMetrics struct {
 	ProcessedItems  int `bson:"processed_items" json:"processed_items"`
 	SuccessCount    int `bson:"success_count" json:"success_count"`
+	InvalidCount    int `bson:"invalid_count" json:"invalid_count"`
 	WarningCount    int `bson:"warning_count" json:"warning_count"`
 	FailureCount    int `bson:"failure_count" json:"failure_count"`
 	BatchesComplete int `bson:"batches_complete" json:"batches_complete"`

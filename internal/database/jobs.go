@@ -134,6 +134,7 @@ func (m *mongoDB) UpdateJobMetrics(ctx context.Context, id primitive.ObjectID, m
 			"metrics.success_count":   metrics.SuccessCount,
 			"metrics.failure_count":   metrics.FailureCount,
 			"metrics.warning_count":   metrics.WarningCount,
+			"metrics.invalid_count":   metrics.InvalidCount,
 		},
 		"$set": bson.M{
 			"updated_at": time.Now(),
