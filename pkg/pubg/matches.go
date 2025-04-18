@@ -246,13 +246,17 @@ func (m *PUBGMatchResponse) GetTelemetryURL() (string, error) {
 	return "", fmt.Errorf("telemetry URL not found in match data")
 }
 
-func (m *PUBGMatchResponse) IsValidMatch() bool {
-	matchType := m.GetMatchType()
+func (m *PUBGMatchResponse) IsValidMatch(shard string) bool {
+	matchType := m.GetMatchType(shard)
 	return matchType != "invalid"
 }
 
-func (m *PUBGMatchResponse) GetMatchType() string {
+func (m *PUBGMatchResponse) GetMatchType(shard string) string {
 	var matchType string
+
+	if shard == EventPlatform {
+		return "event"
+	}
 
 	if m.Data.Attributes.GameMode == "squad-fpp" && m.Data.Attributes.MatchType == "competitive" && !m.Data.Attributes.IsCustomMatch {
 		matchType = "ranked"

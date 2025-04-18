@@ -198,7 +198,7 @@ func (p *MatchExpanderWorker) ProcessBatch(batch []string, jobID primitive.Objec
 					return
 				}
 
-				matchDocument, valid, err := p.BuildMatchDocument(id)
+				matchDocument, valid, err := p.BuildMatchDocument(id, pubg.SteamPlatform)
 				if err != nil {
 					log.Error().Err(err).Str("Match ID", id).Msg("Could not process match ID")
 					mutex.Lock()
@@ -254,7 +254,7 @@ func (p *MatchExpanderWorker) ProcessBatch(batch []string, jobID primitive.Objec
 }
 
 // Returns false if the match isn't "valid"
-func (p *MatchExpanderWorker) BuildMatchDocument(matchID string) (*model.Match, bool, error) {
+func (p *MatchExpanderWorker) BuildMatchDocument(matchID, shard string) (*model.Match, bool, error) {
 	if p.isCancelled() {
 		return nil, true, fmt.Errorf("worker cancelled")
 	}
@@ -264,12 +264,12 @@ func (p *MatchExpanderWorker) BuildMatchDocument(matchID string) (*model.Match, 
 		return nil, true, safeCtx.Err()
 	}
 
-	match, err := p.pubgClient.GetMatch(pubg.SteamPlatform, matchID)
+	match, err := p.pubgClient.GetMatch(shard, matchID)
 	if err != nil {
 		return nil, true, fmt.Errorf("could not get match: %w", err)
 	}
 
-	if !match.IsValidMatch() {
+	if !match.IsValidMatch(pubg.SteamPlatform) {
 		return nil, false, nil
 	}
 
@@ -301,13 +301,13 @@ func (p *MatchExpanderWorker) BuildMatchDocument(matchID string) (*model.Match, 
 
 	matchDocument := model.Match{
 		MatchID:       matchID,
-		ShardID:       pubg.SteamPlatform,
+		ShardID:       shard,
 		MapName:       match.Data.Attributes.MapName,
 		GameMode:      match.Data.Attributes.GameMode,
 		Duration:      match.Data.Attributes.Duration,
 		IsCustomMatch: match.Data.Attributes.IsCustomMatch,
 		CreatedAt:     createdAt,
-		MatchType:     match.GetMatchType(),
+		MatchType:     match.GetMatchType(pubg.SteamPlatform),
 
 		// Processing metadata
 		Processed:  false,
