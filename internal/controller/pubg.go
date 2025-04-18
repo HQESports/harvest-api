@@ -123,9 +123,10 @@ func (pc *pubgController) CreatePlayers(names []string) (int, error) {
 	entities := make([]model.Entity, 0, len(idMap))
 	for player, id := range idMap {
 		entities = append(entities, model.Entity{
-			ID:     id,
-			Name:   player,
-			Active: true,
+			ID:        id,
+			Name:      player,
+			Active:    true,
+			CreatedAt: time.Now(),
 		})
 	}
 

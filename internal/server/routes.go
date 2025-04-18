@@ -28,9 +28,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 	api := r.Group("/api")
 	api.Use(s.AuthMiddleware(controller.RoleAdmin, controller.RoleService))
 	{
-		api.POST("/names", s.namesHandler)
-		api.POST("/buildMatches", s.BuildMatchesFromFilter)
-		api.POST("/tournaments", s.tournamentsHandler)
+		pubg := api.Group("/pubg")
+		{
+			pubg.POST("/names", s.namesHandler)
+		}
 
 		// Job routes - accessible to both ADMIN and SERVICE roles
 		jobs := api.Group("/jobs")

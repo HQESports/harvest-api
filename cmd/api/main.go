@@ -65,12 +65,13 @@ func main() {
 	// Initialize base process registry for job workers
 
 	// Creating processors
+
 	playerWorker := worker.NewPlayerExpanderWorker(pubgClient, db)
-	//matchProcessor := processor.NewMatchProcessor(db, pubgClient)
 	matchWorker := worker.NewMatchExpanderWorker(pubgClient, db)
+	tournamentWorker := worker.NewTournamentExpanderWorker(pubgClient, db)
 
 	// Registering processors
-	registry := orchestrator.NewWorkerRegistry(playerWorker, matchWorker)
+	registry := orchestrator.NewWorkerRegistry(playerWorker, matchWorker, tournamentWorker)
 
 	// Create and start HTTP server
 	srv := server.New(*cfg, db, cache, rabbit, *pubgClient, registry)

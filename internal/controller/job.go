@@ -28,7 +28,7 @@ type JobController interface {
 	ProcessJobs(ctx context.Context) error
 
 	// Get Available Job Types
-	GetAvailableJobTypes() map[string]string
+	GetAvailableJobTypes() map[string]orchestrator.BatchWorker
 
 	// Cancel Jobs by Type
 	CancelJob(string) error
@@ -69,13 +69,13 @@ func NewJobController(db database.JobDatabase, rabbitClient rabbitmq.Client,
 
 func (c *jobController) CancelJob(jobType string) error {
 	worker, ok := c.processRegistry.Get(jobType)
-	jobID := *worker.ActiveJobID()
-	if !worker.IsActive() {
-		return fmt.Errorf("job type is not active: %v", jobType)
-	}
-
+	jobID := worker.ActiveJobID()
 	if !ok {
 		return fmt.Errorf("job type does not exist: %v", jobType)
+	}
+
+	if !worker.IsActive() {
+		return fmt.Errorf("job type is not active: %v", jobType)
 	}
 
 	err := worker.Cancel()
@@ -83,7 +83,7 @@ func (c *jobController) CancelJob(jobType string) error {
 		return err
 	}
 
-	return c.db.UpdateJobStatus(context.TODO(), jobID, model.StatusCancelled)
+	return c.db.UpdateJobStatus(context.TODO(), *jobID, model.StatusCancelled)
 }
 
 func (c *jobController) GetJob(ctx context.Context, jobID string) (*model.Job, error) {
@@ -379,12 +379,12 @@ func getBatchSize(config config.JobsConfig, jobType string) int {
 	return config.DefaultBatchSize
 }
 
-func (c *jobController) GetAvailableJobTypes() map[string]string {
-	jobTypeMap := make(map[string]string)
+func (c *jobController) GetAvailableJobTypes() map[string]orchestrator.BatchWorker {
+	jobTypeMap := make(map[string]orchestrator.BatchWorker)
 
 	for _, processType := range c.processRegistry.AvailableProcessors() {
 		process, _ := c.processRegistry.Get(processType)
-		jobTypeMap[processType] = process.Name()
+		jobTypeMap[processType] = process
 	}
 
 	return jobTypeMap

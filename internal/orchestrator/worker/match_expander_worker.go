@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	MATCH_EXPANDER_TYPE = "match_expander_worker"
-	MATCH_EXPANDER_NAME = "Match Expander Worker - Search through stored players and bulk import their matches"
+	MATCH_EXPANDER_TYPE        = "match_expander_worker"
+	MATCH_EXPANDER_NAME        = "Match Expander Worker"
+	MATCH_EXPANDER_DESCRIPTION = "Search through stored players and bulk import their matches"
 )
 
 type MatchExpanderWorker struct {
@@ -67,6 +68,10 @@ func (p *MatchExpanderWorker) Name() string {
 // Type implements job.BatchWorker.
 func (p *MatchExpanderWorker) Type() string {
 	return MATCH_EXPANDER_TYPE
+}
+
+func (p *MatchExpanderWorker) Description() string {
+	return MATCH_EXPANDER_DESCRIPTION
 }
 
 // isCancelled returns true if the worker has been cancelled

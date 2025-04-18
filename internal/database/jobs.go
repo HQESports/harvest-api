@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // JobDatabase defines job-related database operations
@@ -107,9 +108,12 @@ func (m *mongoDB) UpdateJobStatus(ctx context.Context, id primitive.ObjectID, st
 	return nil
 }
 
-// ListJobs retrieves all jobs from the database with optional filtering
+// ListJobs retrieves all jobs from the database, sorted by most recently updated first
 func (m *mongoDB) ListJobs(ctx context.Context) ([]model.Job, error) {
-	cursor, err := m.jobsCol.Find(ctx, bson.M{})
+	// Create options to sort by updated_at in descending order
+	opts := options.Find().SetSort(bson.D{{Key: "updated_at", Value: -1}})
+
+	cursor, err := m.jobsCol.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to list jobs")
 		return nil, err
@@ -130,11 +134,12 @@ func (m *mongoDB) ListJobs(ctx context.Context) ([]model.Job, error) {
 func (m *mongoDB) UpdateJobMetrics(ctx context.Context, id primitive.ObjectID, metrics model.JobMetrics) error {
 	update := bson.M{
 		"$inc": bson.M{
-			"metrics.processed_items": metrics.ProcessedItems,
-			"metrics.success_count":   metrics.SuccessCount,
-			"metrics.failure_count":   metrics.FailureCount,
-			"metrics.warning_count":   metrics.WarningCount,
-			"metrics.invalid_count":   metrics.InvalidCount,
+			"metrics.processed_items":  metrics.ProcessedItems,
+			"metrics.success_count":    metrics.SuccessCount,
+			"metrics.failure_count":    metrics.FailureCount,
+			"metrics.warning_count":    metrics.WarningCount,
+			"metrics.invalid_count":    metrics.InvalidCount,
+			"metrics.batches_complete": metrics.BatchesComplete,
 		},
 		"$set": bson.M{
 			"updated_at": time.Now(),

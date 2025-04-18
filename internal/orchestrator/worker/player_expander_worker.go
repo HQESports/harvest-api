@@ -9,14 +9,16 @@ import (
 	"harvest/pkg/pubg"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 const (
-	PLAYER_EXPANDER_TYPE = "player_expander_worker"
-	PLAYER_EXPANDER_NAME = "Player Expander Worker - Search through stored players and expand known players"
+	PLAYER_EXPANDER_TYPE        = "player_expander_worker"
+	PLAYER_EXPANDER_NAME        = "Player Expander Worker"
+	PLAYER_EXPANDER_DESCRIPTION = "Search through stored players and expand known players"
 )
 
 type PlayerExpanderWorker struct {
@@ -33,6 +35,8 @@ func (p *PlayerExpanderWorker) Cancel() error {
 	if p.cancelFunc != nil {
 		cancelFunc := *p.cancelFunc
 		cancelFunc()
+	} else {
+		return fmt.Errorf("job is not active")
 	}
 
 	// Set the cancelled flag atomically
@@ -66,6 +70,11 @@ func (p *PlayerExpanderWorker) Name() string {
 // Type implements job.BatchWorker.
 func (p *PlayerExpanderWorker) Type() string {
 	return PLAYER_EXPANDER_TYPE
+}
+
+// Type implements job.BatchWorker.
+func (p *PlayerExpanderWorker) Description() string {
+	return PLAYER_EXPANDER_DESCRIPTION
 }
 
 // isCancelled returns true if the worker has been cancelled
@@ -269,9 +278,10 @@ func (p *PlayerExpanderWorker) ProcessMatchID(matchID string) (*model.JobMetrics
 			}
 
 			player := model.Entity{
-				Name:   name,
-				ID:     ID,
-				Active: true,
+				Name:      name,
+				ID:        ID,
+				Active:    true,
+				CreatedAt: time.Now(),
 			}
 			newPlayers = append(newPlayers, player)
 			cnt++

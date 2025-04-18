@@ -22,6 +22,9 @@ type BatchWorker interface {
 	// Type returns the type of the processor as a string
 	Type() string
 
+	// Description
+	Description() string
+
 	//
 	ActiveJobID() *primitive.ObjectID
 }

@@ -40,7 +40,7 @@
         "requests_per_minute": 10,
         "old_enough_min": 1570,
         "cache": true,
-        "default_cache_ttl": 1440
+        "default_cache_ttl": 5
     },
     "mongodb": {
         "uri": "mongodb://localhost:27017",
@@ -76,6 +76,10 @@
             {
                 "type": "player_expander_worker",
                 "batch_size": 100
+            },
+            {
+                "type": "tournament_expander_worker",
+                "batch_size": 20
             }
         ]
     }

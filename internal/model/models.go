@@ -27,9 +27,10 @@ const (
 
 // Entity represents a common structure for players and tournaments
 type Entity struct {
-	ID     string `json:"id" bson:"id"`
-	Name   string `json:"name" bson:"name"`
-	Active bool   `json:"active" bson:"active"`
+	ID        string    `json:"id" bson:"id"`
+	Name      string    `json:"name" bson:"name"`
+	Active    bool      `json:"active" bson:"active"`
+	CreatedAt time.Time `json:"created_at" bson:"created_at"`
 }
 
 type Match struct {

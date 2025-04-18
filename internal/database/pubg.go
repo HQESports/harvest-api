@@ -37,8 +37,17 @@ func (m *mongoDB) BulkUpsertTournaments(ctx context.Context, entities []model.En
 
 // BulkUpsertEntities adds or updates multiple entities in the specified collection
 func (m *mongoDB) BulkUpsertEntities(ctx context.Context, col *mongo.Collection, entities []model.Entity) (*mongo.BulkWriteResult, error) {
+	emptyResult := &mongo.BulkWriteResult{
+		InsertedCount: 0,
+		MatchedCount:  0,
+		ModifiedCount: 0,
+		DeletedCount:  0,
+		UpsertedCount: 0,
+		UpsertedIDs:   make(map[int64]interface{}),
+	}
+
 	if len(entities) == 0 {
-		return nil, nil
+		return emptyResult, nil
 	}
 
 	// Create a slice of write models for bulk operation
@@ -72,7 +81,7 @@ func (m *mongoDB) BulkUpsertEntities(ctx context.Context, col *mongo.Collection,
 	writeResult, err := col.BulkWrite(ctx, models, opts)
 	if err != nil {
 		log.Error().Msgf("Failed to bulk upsert entities: %v", err)
-		return nil, err
+		return emptyResult, err
 	}
 
 	return writeResult, nil

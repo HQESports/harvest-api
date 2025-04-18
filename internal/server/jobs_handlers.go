@@ -28,6 +28,12 @@ type JobResponse struct {
 	Metrics   model.JobMetrics `json:"metrics"`
 }
 
+type JobTypeResponse struct {
+	JobType        string `json:"job_type"`
+	JobName        string `json:"job_name"`
+	JobDescription string `json:"job_description"`
+}
+
 // CreateJobHandler creates a new job
 func (s *Server) CreateJobHandler(c *gin.Context) {
 	var req JobRequest
@@ -102,7 +108,18 @@ func (s *Server) ListJobsHandler(c *gin.Context) {
 }
 
 func (s *Server) ListAllAvailableJobTypes(c *gin.Context) {
-	c.JSON(http.StatusOK, s.jc.GetAvailableJobTypes())
+	jobTypes := s.jc.GetAvailableJobTypes()
+
+	types := make([]JobTypeResponse, 0, len(jobTypes))
+	for jobType, worker := range jobTypes {
+		types = append(types, JobTypeResponse{
+			JobType:        jobType,
+			JobDescription: worker.Description(),
+			JobName:        worker.Name(),
+		})
+	}
+
+	c.JSON(http.StatusOK, types)
 }
 
 // Helper functions
