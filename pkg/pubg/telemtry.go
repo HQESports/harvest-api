@@ -1,18 +1,24 @@
 package pubg
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"math"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
 )
 
-// Position represents a 3D coordinate in the game world
+// Position represents a 2D coordinate in the game world
 type Position struct {
 	X float64 `json:"x" bson:"x"`
 	Y float64 `json:"y" bson:"y"`
-	Z float64 `json:"z" bson:"z"`
 }
 
 // Common represents shared fields across different event types
@@ -27,10 +33,8 @@ type Character struct {
 
 // GameState represents the current state of game zones
 type GameState struct {
-	SafetyZonePosition       Position `json:"safetyZonePosition" bson:"safetyZonePosition"`
-	SafetyZoneRadius         float64  `json:"safetyZoneRadius" bson:"safetyZoneRadius"`
-	PoisonGasWarningPosition Position `json:"poisonGasWarningPosition" bson:"poisonGasWarningPosition"`
-	PoisonGasWarningRadius   float64  `json:"poisonGasWarningRadius" bson:"poisonGasWarningRadius"`
+	SafetyZonePosition Position `json:"safetyZonePosition" bson:"safetyZonePosition"`
+	SafetyZoneRadius   float64  `json:"safetyZoneRadius" bson:"safetyZoneRadius"`
 }
 
 // BaseEvent contains common fields for all event types
@@ -57,368 +61,182 @@ type LogGameStatePeriodic struct {
 type PlanePath struct {
 	StartPoint Position `json:"startPoint" bson:"startPoint"`
 	EndPoint   Position `json:"endPoint" bson:"endPoint"`
-	Trajectory []Position
 }
 
-// CirclePhase represents data for a single circle phase
-type CirclePhase struct {
-	Phase          int       `json:"phase" bson:"phase"`
-	Timestamp      time.Time `json:"timestamp" bson:"timestamp"`
-	SafeZoneCenter Position  `json:"safeZoneCenter" bson:"safeZoneCenter"`
-	SafeZoneRadius float64   `json:"safeZoneRadius" bson:"safeZoneRadius"`
-	BlueZoneCenter Position  `json:"blueZoneCenter" bson:"blueZoneCenter"`
-	BlueZoneRadius float64   `json:"blueZoneRadius" bson:"blueZoneRadius"`
+// SafeZone represents data for a single circle phase
+type SafeZone struct {
+	Phase  int     `json:"phase" bson:"phase"`
+	X      float64 `json:"x" bson:"x"`
+	Y      float64 `json:"y" bson:"y"`
+	Radius float64 `json:"radius" bson:"radius"`
 }
 
 // TelemetryData represents the extracted and processed telemetry data
 type TelemetryData struct {
-	Circles   []CirclePhase `json:"circles" bson:"circles"`
-	PlanePath PlanePath     `json:"planePath" bson:"planePath"`
+	SafeZones []SafeZone `json:"safeZones" bson:"safeZones"`
+	PlanePath PlanePath  `json:"planePath" bson:"planePath"`
 }
 
 // ProcessTelemetry parses telemetry data from a JSON byte array and extracts relevant information
 func ProcessTelemetry(data []byte) (*TelemetryData, error) {
-	operationID := fmt.Sprintf("process_telemetry_%d", time.Now().UnixNano())
-	startTime := time.Now()
-
-	log.Info().
-		Str("operation_id", operationID).
-		Int("data_size_bytes", len(data)).
-		Msg("Starting ProcessTelemetry operation")
-
 	// Initialize result structure
 	result := &TelemetryData{
-		Circles:   []CirclePhase{},
-		PlanePath: PlanePath{Trajectory: []Position{}},
+		SafeZones: []SafeZone{},
 	}
 
-	// Use a map to track the first occurrence of each circle phase
-	phaseMap := make(map[int]bool)
-
-	// Unmarshal phase
-	unmarshalStartTime := time.Now()
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "unmarshal").
-		Msg("Unmarshaling telemetry data array")
+	// Use a map to track the index of each phase in our results array
+	phaseIndexMap := make(map[int]int)
 
 	// Unmarshal the entire array of events into a slice of maps
 	var events []map[string]json.RawMessage
 	if err := json.Unmarshal(data, &events); err != nil {
-		log.Error().
-			Str("operation_id", operationID).
-			Str("phase", "unmarshal").
-			Err(err).
-			Int("data_size_bytes", len(data)).
-			Dur("operation_duration", time.Since(startTime)).
-			Msg("Failed to unmarshal telemetry data")
 		return nil, fmt.Errorf("failed to unmarshal telemetry data: %w", err)
 	}
 
-	unmarshalDuration := time.Since(unmarshalStartTime)
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "unmarshal").
-		Int("event_count", len(events)).
-		Dur("duration", unmarshalDuration).
-		Msg("Successfully unmarshaled telemetry events array")
-
-	// Initialize processing metrics
-	processingStartTime := time.Now()
-	processedEvents := 0
-	errorEvents := 0
-	skippedEvents := 0
-	playerPositionEvents := 0
-	gameStateEvents := 0
-	planePathPoints := 0
-	circlePhasesFound := 0
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "processing").
-		Int("total_events", len(events)).
-		Msg("Starting event processing loop")
+	log.Info().Int("total_events", len(events)).Msg("Processing telemetry events")
 
 	// Process each event based on its type
-	for i, eventData := range events {
-		eventStartTime := time.Now()
-
+	for _, eventData := range events {
 		// Extract event type
 		var eventType string
 		if typeData, ok := eventData["_T"]; ok {
 			if err := json.Unmarshal(typeData, &eventType); err != nil {
-				log.Error().
-					Str("operation_id", operationID).
-					Str("phase", "processing").
-					Int("event_index", i).
-					Err(err).
-					Dur("event_duration", time.Since(eventStartTime)).
-					Msg("Failed to unmarshal event type")
-				errorEvents++
 				continue
 			}
 		} else {
-			log.Trace().
-				Str("operation_id", operationID).
-				Str("phase", "processing").
-				Int("event_index", i).
-				Msg("Skipping event without _T field")
-			skippedEvents++
 			continue // Skip events without a type
 		}
 
 		// Process based on event type
 		switch eventType {
 		case "LogPlayerPosition":
-			playerPositionEvents++
-
-			log.Trace().
-				Str("operation_id", operationID).
-				Str("phase", "processing").
-				Int("event_index", i).
-				Str("event_type", eventType).
-				Msg("Processing player position event")
-
-			var event LogPlayerPosition
-			eventBytes, err := json.Marshal(eventData)
-			if err != nil {
-				log.Warn().
-					Str("operation_id", operationID).
-					Str("phase", "processing").
-					Int("event_index", i).
-					Str("event_type", eventType).
-					Err(err).
-					Msg("Failed to marshal event data for unmarshaling")
-				errorEvents++
+			// Check if this event has vehicle data
+			vehicleData, hasVehicle := eventData["vehicle"]
+			if !hasVehicle {
 				continue
 			}
 
-			if err := json.Unmarshal(eventBytes, &event); err != nil {
-				log.Error().
-					Str("operation_id", operationID).
-					Str("phase", "processing").
-					Int("event_index", i).
-					Str("event_type", eventType).
-					Err(err).
-					Msg("Error unmarshalling LogPlayerPosition event")
-				errorEvents++
+			// Parse the vehicle data to check if it's the transport aircraft
+			var vehicle struct {
+				VehicleType string `json:"vehicleType"`
+				VehicleId   string `json:"vehicleId"`
+				Location    struct {
+					X float64 `json:"x"`
+					Y float64 `json:"y"`
+					Z float64 `json:"z"`
+				} `json:"location"`
+			}
+
+			if err := json.Unmarshal(vehicleData, &vehicle); err != nil {
 				continue
 			}
 
-			// Check if this is a plane path event
-			if event.Common.IsGame <= 0.2 && event.Common.IsGame >= 0.1 {
-				planePathPoints++
-
-				log.Trace().
-					Str("operation_id", operationID).
-					Str("phase", "processing").
-					Int("event_index", i).
-					Float64("is_game", event.Common.IsGame).
-					Interface("position", event.Character.Location).
-					Str("timestamp", event.Timestamp.Format(time.RFC3339)).
-					Int("total_trajectory_points", len(result.PlanePath.Trajectory)).
-					Msg("Identified plane path position")
-
-				// Add this point to the trajectory
-				result.PlanePath.Trajectory = append(result.PlanePath.Trajectory, event.Character.Location)
-
-				// If this is the first point, set it as the start point
-				if len(result.PlanePath.Trajectory) == 1 {
-					result.PlanePath.StartPoint = event.Character.Location
-
-					log.Debug().
-						Str("operation_id", operationID).
-						Str("phase", "processing").
-						Interface("start_point", event.Character.Location).
-						Str("timestamp", event.Timestamp.Format(time.RFC3339)).
+			// Check if this is the transport aircraft
+			if vehicle.VehicleType == "TransportAircraft" ||
+				vehicle.VehicleId == "DummyTransportAircraft_C" {
+				// If we don't have a start point yet, set it
+				if result.PlanePath.StartPoint == (Position{}) {
+					result.PlanePath.StartPoint = Position{
+						X: vehicle.Location.X,
+						Y: vehicle.Location.Y,
+					}
+					log.Info().
+						Float64("x", vehicle.Location.X).
+						Float64("y", vehicle.Location.Y).
 						Msg("Set plane path start point")
 				}
 
-				// Update the end point with each new position (will eventually be the last position)
-				result.PlanePath.EndPoint = event.Character.Location
+				// Always update the end point with each new position
+				result.PlanePath.EndPoint = Position{
+					X: vehicle.Location.X,
+					Y: vehicle.Location.Y,
+				}
+				log.Debug().
+					Float64("x", vehicle.Location.X).
+					Float64("y", vehicle.Location.Y).
+					Msg("Updated plane path end point")
 			}
 
 		case "LogGameStatePeriodic":
-			gameStateEvents++
-
-			log.Trace().
-				Str("operation_id", operationID).
-				Str("phase", "processing").
-				Int("event_index", i).
-				Str("event_type", eventType).
-				Msg("Processing game state event")
-
 			var event LogGameStatePeriodic
 			eventBytes, err := json.Marshal(eventData)
 			if err != nil {
-				log.Warn().
-					Str("operation_id", operationID).
-					Str("phase", "processing").
-					Int("event_index", i).
-					Str("event_type", eventType).
-					Err(err).
-					Msg("Failed to marshal event data for unmarshaling")
-				errorEvents++
 				continue
 			}
 
 			if err := json.Unmarshal(eventBytes, &event); err != nil {
-				log.Warn().
-					Str("operation_id", operationID).
-					Str("phase", "processing").
-					Int("event_index", i).
-					Str("event_type", eventType).
-					Err(err).
-					Msg("Error unmarshalling LogGameStatePeriodic event")
-				errorEvents++
 				continue
 			}
 
-			// Check if this represents a new circle phase (whole number)
+			// Get the isGame value
 			isGame := event.Common.IsGame
-			phase := int(isGame)
 
-			// Only process events that represent new circle formations (whole numbers like 1.0, 2.0, etc.)
-			// Also check that we haven't already processed this phase
-			if float64(phase) == isGame && phase > 0 && !phaseMap[phase] {
-				// Mark this phase as processed
-				phaseMap[phase] = true
-				circlePhasesFound++
+			// Adjust phase number: isGame 2.0 is actually the first real zone
+			var phase int
+			if float64(int(isGame)) == isGame && isGame >= 2.0 {
+				// Convert isGame to actual phase (isGame 2.0 -> Phase 1)
+				phase = int(isGame) - 1
 
-				// Extract circle data for this phase
-				circlePhase := CirclePhase{
-					Phase:          phase,
-					Timestamp:      event.Timestamp,
-					SafeZoneCenter: event.GameState.SafetyZonePosition,
-					SafeZoneRadius: event.GameState.SafetyZoneRadius,
-					BlueZoneCenter: event.GameState.PoisonGasWarningPosition,
-					BlueZoneRadius: event.GameState.PoisonGasWarningRadius,
+				// Skip processing if the coordinates are exactly center of map (408000, 408000)
+				// which might indicate default values rather than actual gameplay position
+				if phase == 1 && event.GameState.SafetyZonePosition.X == 408000.0 && event.GameState.SafetyZonePosition.Y == 408000.0 {
+					log.Warn().Msg("Skipping Phase 1 with default center coordinates")
+					continue
 				}
 
-				result.Circles = append(result.Circles, circlePhase)
+				// Extract safe zone data for this phase
+				safeZone := SafeZone{
+					Phase:  phase,
+					X:      event.GameState.SafetyZonePosition.X,
+					Y:      event.GameState.SafetyZonePosition.Y,
+					Radius: event.GameState.SafetyZoneRadius,
+				}
 
-				log.Debug().
-					Str("operation_id", operationID).
-					Str("phase", "processing").
-					Int("circle_phase", phase).
-					Float64("safe_zone_radius", event.GameState.SafetyZoneRadius).
-					Float64("blue_zone_radius", event.GameState.PoisonGasWarningRadius).
-					Interface("safe_zone_center", event.GameState.SafetyZonePosition).
-					Interface("blue_zone_center", event.GameState.PoisonGasWarningPosition).
-					Str("timestamp", event.Timestamp.Format(time.RFC3339)).
-					Msg("Extracted new circle phase data")
+				// Check if we've seen this phase before
+				if index, found := phaseIndexMap[phase]; found {
+					// Update the existing entry with the latest values
+					result.SafeZones[index] = safeZone
+				} else {
+					// First time seeing this phase, add it to our results
+					result.SafeZones = append(result.SafeZones, safeZone)
+					// Store the index of this phase for future updates
+					phaseIndexMap[phase] = len(result.SafeZones) - 1
+				}
 			}
 		}
-
-		processedEvents++
-
-		if processedEvents%10000 == 0 {
-			log.Info().
-				Str("operation_id", operationID).
-				Str("phase", "processing").
-				Int("processed_events", processedEvents).
-				Int("total_events", len(events)).
-				Float64("completion_percentage", float64(processedEvents)/float64(len(events))*100).
-				Int("player_position_events", playerPositionEvents).
-				Int("game_state_events", gameStateEvents).
-				Int("error_events", errorEvents).
-				Int("plane_path_points", planePathPoints).
-				Int("circle_phases_found", circlePhasesFound).
-				Dur("elapsed_duration", time.Since(startTime)).
-				Msg("Telemetry processing progress update")
-		}
-	}
-
-	processingDuration := time.Since(processingStartTime)
-
-	// Only log the plane path if we have valid data
-	if len(result.PlanePath.Trajectory) > 0 {
-		log.Info().
-			Str("operation_id", operationID).
-			Str("phase", "results").
-			Interface("plane_start", result.PlanePath.StartPoint).
-			Interface("plane_end", result.PlanePath.EndPoint).
-			Int("trajectory_points", len(result.PlanePath.Trajectory)).
-			Msg("Extracted plane path data")
-	} else {
-		log.Warn().
-			Str("operation_id", operationID).
-			Str("phase", "results").
-			Msg("No plane path data found in telemetry")
-	}
-
-	// Log circle phases summary
-	circlePhaseNumbers := make([]int, 0, len(result.Circles))
-	for _, circle := range result.Circles {
-		circlePhaseNumbers = append(circlePhaseNumbers, circle.Phase)
 	}
 
 	log.Info().
-		Str("operation_id", operationID).
-		Str("phase", "results").
-		Int("circle_count", len(result.Circles)).
-		Ints("detected_phases", circlePhaseNumbers).
-		Msg("Extracted circle phase data")
-
-	// Final completion statistics
-	log.Info().
-		Str("operation_id", operationID).
-		Int("total_events", len(events)).
-		Int("processed_events", processedEvents).
-		Int("skipped_events", skippedEvents).
-		Int("error_events", errorEvents).
-		Int("player_position_events", playerPositionEvents).
-		Int("game_state_events", gameStateEvents).
-		Int("plane_path_points", planePathPoints).
-		Int("circle_phases", len(result.Circles)).
-		Dur("unmarshal_duration", unmarshalDuration).
-		Dur("processing_duration", processingDuration).
-		Dur("total_duration", time.Since(startTime)).
-		Float64("events_per_second", float64(processedEvents)/processingDuration.Seconds()).
-		Msg("ProcessTelemetry operation completed")
+		Int("safe_zones_found", len(result.SafeZones)).
+		Bool("plane_path_found", result.PlanePath != PlanePath{}).
+		Msg("Telemetry processing completed")
 
 	return result, nil
 }
 
-// DumpTelemetryData outputs extracted data for debugging
-func DumpTelemetryData(data *TelemetryData) {
-	operationID := fmt.Sprintf("dump_telemetry_%d", time.Now().UnixNano())
+// ProcessTelemetryFromURL fetches and processes telemetry data from a URL
+func (c *Client) ProcessTelemetryFromURL(ctx context.Context, telemetryURL string) (*TelemetryData, error) {
+	log.Info().
+		Str("url", telemetryURL).
+		Msg("Processing telemetry data from URL")
 
-	log.Debug().
-		Str("operation_id", operationID).
-		Int("circle_phases", len(data.Circles)).
-		Int("trajectory_points", len(data.PlanePath.Trajectory)).
-		Msg("Starting DumpTelemetryData operation")
-
-	fmt.Println("Extracted PUBG Telemetry Data:")
-
-	// Dump circle phases
-	fmt.Println("\nCircle Phases:")
-	for i, circle := range data.Circles {
-		fmt.Printf("Phase %d (Time: %s):\n", circle.Phase, circle.Timestamp.Format(time.RFC3339))
-		fmt.Printf("  White Circle: Center(%.2f, %.2f, %.2f), Radius: %.2f\n",
-			circle.SafeZoneCenter.X, circle.SafeZoneCenter.Y, circle.SafeZoneCenter.Z, circle.SafeZoneRadius)
-		fmt.Printf("  Blue Circle: Center(%.2f, %.2f, %.2f), Radius: %.2f\n",
-			circle.BlueZoneCenter.X, circle.BlueZoneCenter.Y, circle.BlueZoneCenter.Z, circle.BlueZoneRadius)
-
-		if i < len(data.Circles)-1 {
-			fmt.Println("")
-		}
+	// Get the telemetry data using the existing client method
+	telemetryData, err := c.GetTelemetry(ctx, telemetryURL, false)
+	if err != nil {
+		log.Error().
+			Str("url", telemetryURL).
+			Err(err).
+			Msg("Failed to fetch telemetry data")
+		return nil, fmt.Errorf("failed to fetch telemetry data: %w", err)
 	}
 
-	// Dump plane path information
-	fmt.Println("\nPlane Path:")
-	fmt.Printf("  Start: (%.2f, %.2f, %.2f)\n",
-		data.PlanePath.StartPoint.X, data.PlanePath.StartPoint.Y, data.PlanePath.StartPoint.Z)
-	fmt.Printf("  End: (%.2f, %.2f, %.2f)\n",
-		data.PlanePath.EndPoint.X, data.PlanePath.EndPoint.Y, data.PlanePath.EndPoint.Z)
-	fmt.Printf("  Points: %d\n", len(data.PlanePath.Trajectory))
+	log.Info().
+		Str("url", telemetryURL).
+		Int("data_size_kb", len(telemetryData)/1024).
+		Msg("Successfully downloaded telemetry data")
 
-	log.Debug().
-		Str("operation_id", operationID).
-		Msg("DumpTelemetryData operation completed")
+	// Process the telemetry data
+	return ProcessTelemetry(telemetryData)
 }
 
 // GetMatchTelemetry retrieves and processes telemetry data for a specific match
@@ -427,161 +245,245 @@ func (c *Client) GetMatchTelemetry(shard string, matchID string) (*TelemetryData
 	startTime := time.Now()
 
 	log.Info().
+		Str("operation", "GetMatchTelemetry").
 		Str("operation_id", operationID).
 		Str("shard", shard).
 		Str("match_id", matchID).
-		Msg("Starting GetMatchTelemetry operation")
+		Msg("Starting telemetry retrieval")
 
 	// Get match data
-	matchStartTime := time.Now()
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "match_retrieval").
-		Str("shard", shard).
-		Str("match_id", matchID).
-		Msg("Retrieving match data")
-
 	matchResponse, err := c.GetMatch(shard, matchID)
 	if err != nil {
 		log.Error().
+			Str("operation", "GetMatchTelemetry").
 			Str("operation_id", operationID).
-			Str("phase", "match_retrieval").
 			Str("shard", shard).
 			Str("match_id", matchID).
 			Err(err).
-			Dur("match_duration", time.Since(matchStartTime)).
-			Dur("total_duration", time.Since(startTime)).
 			Msg("Error getting match data")
 		return nil, fmt.Errorf("error getting match data: %w", err)
 	}
 
-	matchDuration := time.Since(matchStartTime)
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "match_retrieval").
-		Str("match_id", matchID).
-		Str("game_mode", matchResponse.Data.Attributes.GameMode).
-		Str("map_name", matchResponse.Data.Attributes.MapName).
-		Dur("duration", matchDuration).
-		Msg("Successfully retrieved match data")
-
 	// Extract telemetry URL from match data
-	urlStartTime := time.Now()
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "url_extraction").
-		Str("match_id", matchID).
-		Msg("Extracting telemetry URL from match data")
-
 	telemetryURL, err := matchResponse.GetTelemetryURL()
 	if err != nil {
 		log.Error().
+			Str("operation", "GetMatchTelemetry").
 			Str("operation_id", operationID).
-			Str("phase", "url_extraction").
 			Str("match_id", matchID).
 			Err(err).
-			Dur("match_duration", matchDuration).
-			Dur("url_duration", time.Since(urlStartTime)).
-			Dur("total_duration", time.Since(startTime)).
 			Msg("Error extracting telemetry URL")
 		return nil, fmt.Errorf("error extracting telemetry URL: %w", err)
 	}
 
-	urlDuration := time.Since(urlStartTime)
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "url_extraction").
-		Str("match_id", matchID).
-		Str("telemetry_url", telemetryURL).
-		Dur("duration", urlDuration).
-		Msg("Successfully extracted telemetry URL")
-
-	// Get telemetry data
-	downloadStartTime := time.Now()
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "download").
-		Str("match_id", matchID).
-		Str("telemetry_url", telemetryURL).
-		Msg("Downloading telemetry data")
-
-	telemetryData, err := c.GetTelemetryNonRateLimited(telemetryURL)
+	// Process telemetry from the URL
+	ctx := context.Background()
+	processedData, err := c.ProcessTelemetryFromURL(ctx, telemetryURL)
 	if err != nil {
 		log.Error().
+			Str("operation", "GetMatchTelemetry").
 			Str("operation_id", operationID).
-			Str("phase", "download").
-			Str("match_id", matchID).
-			Str("telemetry_url", telemetryURL).
-			Err(err).
-			Dur("match_duration", matchDuration).
-			Dur("url_duration", urlDuration).
-			Dur("download_duration", time.Since(downloadStartTime)).
-			Dur("total_duration", time.Since(startTime)).
-			Msg("Error downloading telemetry data")
-		return nil, fmt.Errorf("error getting telemetry data: %w", err)
-	}
-
-	downloadDuration := time.Since(downloadStartTime)
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "download").
-		Str("match_id", matchID).
-		Int("data_size_bytes", len(telemetryData)).
-		Dur("duration", downloadDuration).
-		Msg("Successfully downloaded telemetry data")
-
-	// Process telemetry data
-	processStartTime := time.Now()
-
-	log.Debug().
-		Str("operation_id", operationID).
-		Str("phase", "processing").
-		Str("match_id", matchID).
-		Int("data_size_bytes", len(telemetryData)).
-		Msg("Processing telemetry data")
-
-	processedData, err := ProcessTelemetry(telemetryData)
-	if err != nil {
-		log.Error().
-			Str("operation_id", operationID).
-			Str("phase", "processing").
 			Str("match_id", matchID).
 			Err(err).
-			Int("data_size_bytes", len(telemetryData)).
-			Dur("match_duration", matchDuration).
-			Dur("url_duration", urlDuration).
-			Dur("download_duration", downloadDuration).
-			Dur("processing_duration", time.Since(processStartTime)).
-			Dur("total_duration", time.Since(startTime)).
 			Msg("Error processing telemetry data")
 		return nil, fmt.Errorf("error processing telemetry data: %w", err)
 	}
 
-	processingDuration := time.Since(processStartTime)
-
 	// Log summary of results
 	log.Info().
+		Str("operation", "GetMatchTelemetry").
 		Str("operation_id", operationID).
-		Str("phase", "completion").
 		Str("match_id", matchID).
 		Str("map_name", matchResponse.Data.Attributes.MapName).
-		Int("data_size_mb", len(telemetryData)/1024/1024).
-		Int("circle_phases", len(processedData.Circles)).
-		Int("plane_path_points", len(processedData.PlanePath.Trajectory)).
-		Bool("has_plane_path", len(processedData.PlanePath.Trajectory) > 0).
-		Dur("match_duration", matchDuration).
-		Dur("url_duration", urlDuration).
-		Dur("download_duration", downloadDuration).
-		Dur("processing_duration", processingDuration).
-		Dur("total_duration", time.Since(startTime)).
-		Float64("mb_per_second", float64(len(telemetryData))/1024/1024/time.Since(startTime).Seconds()).
-		Msg("GetMatchTelemetry operation completed successfully")
+		Int("safe_zones_count", len(processedData.SafeZones)).
+		Bool("has_plane_path", processedData.PlanePath != PlanePath{}).
+		Dur("duration", time.Since(startTime)).
+		Msg("Telemetry retrieval completed")
 
 	return processedData, nil
+}
+
+// String returns a human-readable representation of TelemetryData
+func (t *TelemetryData) String() string {
+	var result strings.Builder
+
+	// Add plane path information
+	result.WriteString("Plane Path:\n")
+	result.WriteString(fmt.Sprintf("  Start: X=%.2f, Y=%.2f\n", t.PlanePath.StartPoint.X, t.PlanePath.StartPoint.Y))
+	result.WriteString(fmt.Sprintf("  End:   X=%.2f, Y=%.2f\n", t.PlanePath.EndPoint.X, t.PlanePath.EndPoint.Y))
+	result.WriteString("\n")
+
+	// Add safe zones information
+	result.WriteString(fmt.Sprintf("Safe Zones (%d):\n", len(t.SafeZones)))
+	for i, zone := range t.SafeZones {
+		result.WriteString(fmt.Sprintf("  Zone %d (Phase %d):\n", i+1, zone.Phase))
+		result.WriteString(fmt.Sprintf("    Center: X=%.2f, Y=%.2f\n", zone.X, zone.Y))
+		result.WriteString(fmt.Sprintf("    Radius: %.2f\n", zone.Radius))
+	}
+
+	return result.String()
+}
+
+// GenerateCirclesImage creates a PNG image showing the safe zones and plane path
+// from telemetry data and saves it to the specified output file
+func (t *TelemetryData) GenerateCirclesImage(outputFile string, backgroundImagePath string) error {
+	var img *image.RGBA
+
+	// Check if background image is provided
+	if backgroundImagePath != "" {
+		// Load the background image
+		bgFile, err := os.Open(backgroundImagePath)
+		if err != nil {
+			return fmt.Errorf("failed to open background image: %w", err)
+		}
+		defer bgFile.Close()
+
+		bgImg, err := png.Decode(bgFile)
+		if err != nil {
+			return fmt.Errorf("failed to decode background image: %w", err)
+		}
+
+		// Create a new RGBA image with the same size as the background
+		bounds := bgImg.Bounds()
+		img = image.NewRGBA(bounds)
+
+		// Copy the background image to our RGBA image
+		for x := 0; x < bounds.Dx(); x++ {
+			for y := 0; y < bounds.Dy(); y++ {
+				img.Set(x, y, bgImg.At(x, y))
+			}
+		}
+	} else {
+		// No background provided, create a blank image with dark background
+		img = image.NewRGBA(image.Rect(0, 0, 800, 800))
+
+		// Fill with a dark background
+		for x := 0; x < 800; x++ {
+			for y := 0; y < 800; y++ {
+				img.Set(x, y, color.RGBA{20, 20, 20, 255}) // Dark gray background
+			}
+		}
+	}
+
+	// Get image dimensions
+	bounds := img.Bounds()
+	imgWidth := bounds.Dx()
+	imgHeight := bounds.Dy()
+
+	// Define scaling factor - from 816000 units to image dimensions
+	scaleX := float64(imgWidth) / 816000.0
+	scaleY := float64(imgHeight) / 816000.0
+
+	// Define colors for different elements
+	planePathColor := color.RGBA{255, 255, 0, 255} // Yellow
+	zoneColors := []color.RGBA{
+		{255, 255, 255, 255}, // White - Phase 1
+		{0, 0, 255, 255},     // Blue - Phase 2
+		{0, 255, 0, 255},     // Green - Phase 3
+		{255, 0, 0, 255},     // Red - Phase 4
+		{255, 0, 255, 255},   // Magenta - Phase 5
+		{0, 255, 255, 255},   // Cyan - Phase 6
+		{255, 165, 0, 255},   // Orange - Phase 7
+		{128, 0, 128, 255},   // Purple - Phase 8
+	}
+
+	// Convert game coordinates to image coordinates
+	// With (0,0) at top-left of the image
+	toImageX := func(gameX float64) int {
+		return int(gameX * scaleX)
+	}
+	toImageY := func(gameY float64) int {
+		return int(gameY * scaleY)
+	}
+
+	// Draw the safe zones
+	for i, zone := range t.SafeZones {
+		colorIndex := i % len(zoneColors)
+		drawCircle(img, toImageX(zone.X), toImageY(zone.Y), int(zone.Radius*scaleX), zoneColors[colorIndex])
+	}
+
+	// Draw the plane path
+	startX := toImageX(t.PlanePath.StartPoint.X)
+	startY := toImageY(t.PlanePath.StartPoint.Y)
+	endX := toImageX(t.PlanePath.EndPoint.X)
+	endY := toImageY(t.PlanePath.EndPoint.Y)
+	drawLine(img, startX, startY, endX, endY, planePathColor)
+
+	// Save the image
+	f, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer f.Close()
+
+	if err := png.Encode(f, img); err != nil {
+		return fmt.Errorf("failed to encode image: %w", err)
+	}
+
+	return nil
+}
+
+// drawCircle draws a circle on the image
+func drawCircle(img *image.RGBA, x, y, radius int, c color.RGBA) {
+	bounds := img.Bounds()
+	imgWidth := bounds.Dx()
+	imgHeight := bounds.Dy()
+
+	// Draw only the outline of the circle
+	for angle := 0.0; angle < 2*math.Pi; angle += 0.001 {
+		px := x + int(float64(radius)*math.Cos(angle))
+		py := y + int(float64(radius)*math.Sin(angle))
+
+		// Check if point is within image boundaries
+		if px >= 0 && px < imgWidth && py >= 0 && py < imgHeight {
+			img.Set(px, py, c)
+		}
+	}
+}
+
+// drawLine draws a line on the image using Bresenham's algorithm
+func drawLine(img *image.RGBA, x0, y0, x1, y1 int, c color.RGBA) {
+	bounds := img.Bounds()
+	imgWidth := bounds.Dx()
+	imgHeight := bounds.Dy()
+
+	steep := math.Abs(float64(y1-y0)) > math.Abs(float64(x1-x0))
+
+	if steep {
+		x0, y0 = y0, x0
+		x1, y1 = y1, x1
+	}
+
+	if x0 > x1 {
+		x0, x1 = x1, x0
+		y0, y1 = y1, y0
+	}
+
+	dx := x1 - x0
+	dy := int(math.Abs(float64(y1 - y0)))
+	err := dx / 2
+	y := y0
+
+	ystep := 1
+	if y0 >= y1 {
+		ystep = -1
+	}
+
+	for x := x0; x <= x1; x++ {
+		if steep {
+			if x >= 0 && x < imgHeight && y >= 0 && y < imgWidth {
+				img.Set(y, x, c)
+			}
+		} else {
+			if x >= 0 && x < imgWidth && y >= 0 && y < imgHeight {
+				img.Set(x, y, c)
+			}
+		}
+
+		err -= dy
+		if err < 0 {
+			y += ystep
+			err += dx
+		}
+	}
 }

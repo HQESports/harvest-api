@@ -48,11 +48,36 @@ type Match struct {
 	ProcessedAt time.Time `bson:"processed_at"` // When the match was processed
 	ImportedAt  time.Time `bson:"imported_at"`  // When the match was imported to DB
 
-	// Statistics and countsx
+	// Statistics and counts
 	PlayerCount int `bson:"player_count"` // Number of participants
 	TeamCount   int `bson:"team_count"`   // Number of rosters/teams
 
 	TelemetryURL string `bson:"telemetry_url"` // URL to telemetry data
+
+	// Telemetry data organized under an umbrella field
+	TelemetryData *TelemetryData `bson:"telemetry_data,omitempty"` // All extracted telemetry data
+}
+
+// TelemetryData contains all extracted data from telemetry
+type TelemetryData struct {
+	SafeZones []SafeZone `bson:"safe_zones,omitempty"` // Array of safety zones, starting with phase 1
+	PlanePath PlanePath  `bson:"plane_path,omitempty"` // Plane path coordinates
+}
+
+// SafeZone represents data for a single circle phase
+type SafeZone struct {
+	Phase  int     `bson:"phase"`  // Phase number (1-indexed)
+	X      float64 `bson:"x"`      // X coordinate of center
+	Y      float64 `bson:"y"`      // Y coordinate of center
+	Radius float64 `bson:"radius"` // Circle radius
+}
+
+// PlanePath represents the airplane trajectory
+type PlanePath struct {
+	StartX float64 `bson:"start_x"` // X coordinate of start point
+	StartY float64 `bson:"start_y"` // Y coordinate of start point
+	EndX   float64 `bson:"end_x"`   // X coordinate of end point
+	EndY   float64 `bson:"end_y"`   // Y coordinate of end point
 }
 
 // APIToken represents a service authentication token

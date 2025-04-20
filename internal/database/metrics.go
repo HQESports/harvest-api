@@ -302,8 +302,6 @@ func (m *mongoDB) GetMatchMetricsForTimeRange(ctx context.Context, startTime, en
 			End:   endTime,
 		},
 	}
-	// TODO TRACK EVENT DATA
-	metrics.TypeDistribution["event"] = 0
 
 	return metrics, nil
 }

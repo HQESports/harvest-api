@@ -7,6 +7,9 @@ api:
 rabbit:
 	go run cmd/rabbit/main.go
 
+pubg:
+	go run cmd/pubg/main.go
+
 # Creates initial admin token based off of config.json
 token:
 	go run cmd/tokengen/main.go

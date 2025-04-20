@@ -21,10 +21,12 @@ type PubgDatabase interface {
 	ImportMatch(context.Context, model.Match) (bool, error)
 	ImportMatches(context.Context, []model.Match) (int, error)
 	GetProcessedMatchIDs(context.Context) ([]string, error)
-	GetUnprocessedMatches(context.Context, int) ([]model.Match, error)
+	GetUnProcessedMatches(ctx context.Context, minDuration int) ([]model.Match, error)
 	GetMatchesByType(context.Context, string, int) ([]model.Match, error)
 	MarkMatchAsProcessed(context.Context, string) error
 	BulkImportMatches(ctx context.Context, matches []model.Match) (model.BulkImportResult, error)
+
+	UpdateMatchesWithTelemetryData(context.Context, map[string]*model.TelemetryData) (int, error)
 }
 
 func (m *mongoDB) BulkUpsertPlayers(ctx context.Context, entities []model.Entity) (*mongo.BulkWriteResult, error) {
@@ -222,28 +224,6 @@ func (m *mongoDB) GetProcessedMatchIDs(ctx context.Context) ([]string, error) {
 	return matchIDs, nil
 }
 
-// GetUnprocessedMatches returns a list of matches that have not been processed
-func (m *mongoDB) GetUnprocessedMatches(ctx context.Context, limit int) ([]model.Match, error) {
-	filter := bson.M{"processed": bson.M{"$ne": true}}
-
-	findOptions := options.Find().SetLimit(int64(limit))
-
-	cursor, err := m.matchesCol.Find(ctx, filter, findOptions)
-	if err != nil {
-		log.Error().Msgf("Error retrieving unprocessed matches: %v", err)
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var matches []model.Match
-	if err = cursor.All(ctx, &matches); err != nil {
-		log.Error().Msgf("Error decoding matches: %v", err)
-		return nil, err
-	}
-
-	return matches, nil
-}
-
 // GetMatchesByType returns a list of matches of a specific type
 func (m *mongoDB) GetMatchesByType(ctx context.Context, matchType string, limit int) ([]model.Match, error) {
 	filter := bson.M{"match_type": matchType}
@@ -323,4 +303,72 @@ func (m *mongoDB) BulkImportMatches(ctx context.Context, matches []model.Match) 
 		DuplicateCount: int(result.MatchedCount),
 		FailureCount:   0, // BulkWrite doesn't track individual failures this way
 	}, nil
+}
+
+func (m *mongoDB) GetUnProcessedMatches(ctx context.Context, minDuration int) ([]model.Match, error) {
+	// Define filter for unprocessed matches with minimum duration
+	filter := bson.M{
+		"processed": bson.M{"$ne": true},
+		"duration":  bson.M{"$gt": minDuration},
+	}
+
+	// Execute the find operation
+	cursor, err := m.matchesCol.Find(ctx, filter)
+	if err != nil {
+		log.Error().Msgf("Error retrieving unprocessed matches: %v", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	// Decode results into match objects
+	var matches []model.Match
+	if err = cursor.All(ctx, &matches); err != nil {
+		log.Error().Msgf("Error decoding matches: %v", err)
+		return nil, err
+	}
+
+	return matches, nil
+}
+
+// UpdateMatchesWithTelemetryData updates multiple matches with processed telemetry data in a batch
+func (m *mongoDB) UpdateMatchesWithTelemetryData(ctx context.Context, updates map[string]*model.TelemetryData) (int, error) {
+	if len(updates) == 0 {
+		return 0, nil
+	}
+
+	// Create a slice of write models for bulk operation
+	var models []mongo.WriteModel
+
+	for matchID, telemetryData := range updates {
+		// Create filter for this match
+		filter := bson.M{"match_id": matchID}
+
+		// Create update model for this match
+		update := bson.M{
+			"$set": bson.M{
+				"telemetry_data": telemetryData,
+				"processed":      true,
+				"processed_at":   time.Now(),
+			},
+		}
+
+		// Create an UpdateOneModel
+		model := mongo.NewUpdateOneModel().
+			SetFilter(filter).
+			SetUpdate(update)
+
+		models = append(models, model)
+	}
+
+	// Set options for bulk write
+	opts := options.BulkWrite().SetOrdered(false)
+
+	// Execute bulk write operation
+	result, err := m.matchesCol.BulkWrite(ctx, models, opts)
+	if err != nil {
+		log.Error().Msgf("Failed to bulk update matches with telemetry data: %v", err)
+		return 0, err
+	}
+
+	return int(result.ModifiedCount), nil
 }

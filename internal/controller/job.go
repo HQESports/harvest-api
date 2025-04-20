@@ -317,7 +317,7 @@ func (c *jobController) processDelivery(ctx context.Context, delivery amqp.Deliv
 
 	logger.Info().Msg("Processing job message")
 
-	// Get the job from the database
+	// Get or create the job record in the database
 	job, err := c.db.GetJobByID(ctx, jobID)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to retrieve job from database")
@@ -325,7 +325,7 @@ func (c *jobController) processDelivery(ctx context.Context, delivery amqp.Deliv
 		return
 	}
 
-	// Get the processor for this job type
+	// Check if the processor exists
 	processor, exists := c.processRegistry.Get(jobType)
 	if !exists {
 		logger.Error().Msg("No processor registered for job type")
@@ -334,39 +334,37 @@ func (c *jobController) processDelivery(ctx context.Context, delivery amqp.Deliv
 		return
 	}
 
-	// Update job status to processing
-	err = c.db.UpdateJobStatus(ctx, jobID, model.StatusProcessing)
+	// Update job status to queued or pending in database
+	err = c.db.UpdateJobStatus(ctx, jobID, model.StatusQueued)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to update job status to processing")
+		logger.Error().Err(err).Msg("Failed to update job status")
 		delivery.Nack(false, false)
 		return
 	}
 
-	// Process the job
-	cancelled, err := processor.StartWorker(job)
-
-	// Update job based on processing result
-	if err != nil {
-		logger.Error().Err(err).Msg("Job processing failed")
-		failErr := c.db.UpdateJobStatus(ctx, jobID, model.StatusFailed)
-		if failErr != nil {
-			logger.Error().Err(failErr).Msg("Failed to update job status to failed")
-		}
-	} else {
-		// Job processed successfully
-		status := model.StatusCompleted
-		if cancelled {
-			status = model.StatusCancelled
-		}
-		completeErr := c.db.UpdateJobStatus(ctx, jobID, status)
-		if completeErr != nil {
-			logger.Error().Err(completeErr).Msg("Failed to update job status to completed")
-		}
-		logger.Info().Msg("Job processed successfully")
-	}
-
-	// Acknowledge the message
+	// Acknowledge the message immediately after storing in database
 	delivery.Ack(false)
+
+	// Now launch the actual processing in a separate pool or queue system
+	// This could be a worker pool, a job scheduler, etc.
+	go func() {
+		// Update job status to processing
+		c.db.UpdateJobStatus(ctx, jobID, model.StatusProcessing)
+
+		// Process the job
+		cancelled, err := processor.StartWorker(job)
+
+		// Update final status
+		if err != nil {
+			c.db.UpdateJobStatus(ctx, jobID, model.StatusFailed)
+		} else {
+			status := model.StatusCompleted
+			if cancelled {
+				status = model.StatusCancelled
+			}
+			c.db.UpdateJobStatus(ctx, jobID, status)
+		}
+	}()
 }
 
 // Helper function to get batch size for a job type

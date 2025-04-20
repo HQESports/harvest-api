@@ -69,9 +69,11 @@ func main() {
 	playerWorker := worker.NewPlayerExpanderWorker(pubgClient, db)
 	matchWorker := worker.NewMatchExpanderWorker(pubgClient, db)
 	tournamentWorker := worker.NewTournamentExpanderWorker(pubgClient, db)
+	tournamentMatchWorker := worker.NewTournamentMatchExpanderWorker(pubgClient, db)
+	processMatchesWorker := worker.NewProcessMatchWorker(pubgClient, db)
 
 	// Registering processors
-	registry := orchestrator.NewWorkerRegistry(playerWorker, matchWorker, tournamentWorker)
+	registry := orchestrator.NewWorkerRegistry(playerWorker, matchWorker, tournamentWorker, tournamentMatchWorker, processMatchesWorker)
 
 	// Create and start HTTP server
 	srv := server.New(*cfg, db, cache, rabbit, *pubgClient, registry)

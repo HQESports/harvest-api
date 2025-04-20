@@ -51,7 +51,7 @@ func (t *tournamentMatchExpanderWorker) Cancel() error {
 
 // Description implements orchestrator.BatchWorker.
 func (t *tournamentMatchExpanderWorker) Description() string {
-	return TOURNAMENT_EXPANDER_DESCRIPTION
+	return TOURNAMENT_MATCH_EXPANDER_DESCRIPTION
 }
 
 // IsActive implements job.BatchWorker.
@@ -245,7 +245,7 @@ func (t *tournamentMatchExpanderWorker) BuildMatchDocument(matchID, shard string
 		return nil, true, fmt.Errorf("could not get match: %w", err)
 	}
 
-	if !match.IsValidMatch(pubg.SteamPlatform) {
+	if !match.IsValidMatch(pubg.EventPlatform) {
 		return nil, false, nil
 	}
 
@@ -283,7 +283,7 @@ func (t *tournamentMatchExpanderWorker) BuildMatchDocument(matchID, shard string
 		Duration:      match.Data.Attributes.Duration,
 		IsCustomMatch: match.Data.Attributes.IsCustomMatch,
 		CreatedAt:     createdAt,
-		MatchType:     match.GetMatchType(pubg.SteamPlatform),
+		MatchType:     match.GetMatchType(pubg.EventPlatform),
 
 		// Processing metadata
 		Processed:  false,

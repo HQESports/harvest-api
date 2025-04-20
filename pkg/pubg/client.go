@@ -239,36 +239,10 @@ func parseAPIError(statusCode int, respBody []byte) error {
 	return fmt.Errorf("API error: status code %d", statusCode)
 }
 
-// generateTelemetryCacheKey creates a unique hash for a telemetry URL
-func generateTelemetryCacheKey(telemetryURL string) string {
-	hash := sha256.Sum256([]byte(telemetryURL))
-	return "telemetry:" + hex.EncodeToString(hash[:])
-}
-
-// GetTelemetry retrieves a telemetry file with optional rate limiting and caching
+// GetTelemetry retrieves a telemetry file with optional rate limiting, but no caching
+// as telemetry files are too large to cache efficiently
 func (c *Client) GetTelemetry(ctx context.Context, telemetryURL string, shouldRateLimit bool) ([]byte, error) {
 	startTime := time.Now()
-
-	// Try to get from cache first if cache is enabled
-	if c.cache != nil {
-		cacheKey := generateTelemetryCacheKey(telemetryURL)
-		cachedData, err := c.cache.Get(ctx, cacheKey)
-
-		if err == nil {
-			// Cache hit
-			log.Debug().
-				Str("telemetry_url", telemetryURL).
-				Int("response_size", len(cachedData)).
-				Msg("Cache hit for telemetry")
-			return cachedData, nil
-		} else if err != cache.ErrCacheMiss {
-			// Real error, not just a cache miss
-			log.Warn().
-				Err(err).
-				Str("telemetry_url", telemetryURL).
-				Msg("Cache error for telemetry, falling back to API")
-		}
-	}
 
 	// Apply rate limiting if needed
 	if shouldRateLimit {
@@ -323,20 +297,6 @@ func (c *Client) GetTelemetry(ctx context.Context, telemetryURL string, shouldRa
 			Int("status_code", resp.StatusCode).
 			Msg("Telemetry API error response")
 		return nil, apiErr
-	}
-
-	// Cache the response if cache is enabled
-	if c.cache != nil {
-		cacheKey := generateTelemetryCacheKey(telemetryURL)
-		// Telemetry data can be large, so we might want to use a longer TTL
-		telemetryTTL := c.defaultTTL * 2
-		err := c.cache.Set(ctx, cacheKey, respBody, telemetryTTL)
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Str("telemetry_url", telemetryURL).
-				Msg("Failed to cache telemetry response")
-		}
 	}
 
 	// Log a single success entry with duration
