@@ -27,6 +27,7 @@ type PubgDatabase interface {
 	BulkImportMatches(ctx context.Context, matches []model.Match) (model.BulkImportResult, error)
 
 	UpdateMatchesWithTelemetryData(context.Context, map[string]*model.TelemetryData) (int, error)
+	GetMatchesByFilters(ctx context.Context, mapName string, matchTypes []string, startDate *time.Time, endDate *time.Time, limit int) ([]model.Match, error)
 }
 
 func (m *mongoDB) BulkUpsertPlayers(ctx context.Context, entities []model.Entity) (*mongo.BulkWriteResult, error) {
@@ -371,4 +372,70 @@ func (m *mongoDB) UpdateMatchesWithTelemetryData(ctx context.Context, updates ma
 	}
 
 	return int(result.ModifiedCount), nil
+}
+
+// GetMatchesByFilters retrieves matches based on map name, match types, and date range
+func (m *mongoDB) GetMatchesByFilters(ctx context.Context, mapName string, matchTypes []string, startDate *time.Time, endDate *time.Time, limit int) ([]model.Match, error) {
+	// Start with an empty filter
+	filter := bson.M{
+		"processed": true, // Only return processed matches
+	}
+
+	// Add map name filter if provided
+	if mapName != "" {
+		filter["map_name"] = mapName
+	}
+
+	// Add match type filter if provided - handle multiple match types
+	if len(matchTypes) > 0 {
+		if len(matchTypes) == 1 {
+			filter["match_type"] = matchTypes[0]
+		} else {
+			filter["match_type"] = bson.M{"$in": matchTypes}
+		}
+	}
+
+	// Add created_at date range filter if either start or end date is provided
+	if startDate != nil || endDate != nil {
+		dateFilter := bson.M{}
+
+		if startDate != nil {
+			dateFilter["$gte"] = *startDate
+		}
+
+		if endDate != nil {
+			dateFilter["$lte"] = *endDate
+		}
+
+		if len(dateFilter) > 0 {
+			filter["created_at"] = dateFilter
+		}
+	}
+
+	// Configure find options
+	findOptions := options.Find()
+	if limit > 0 {
+		findOptions.SetLimit(int64(limit))
+	}
+
+	// Log the filter being used (helpful for debugging)
+	log.Debug().Interface("filter", filter).Int("limit", limit).Msg("Querying matches with filters")
+
+	// Execute the query
+	cursor, err := m.matchesCol.Find(ctx, filter, findOptions)
+	if err != nil {
+		log.Error().Err(err).Msg("Error retrieving matches by filters")
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	// Decode the results
+	var matches []model.Match
+	if err = cursor.All(ctx, &matches); err != nil {
+		log.Error().Err(err).Msg("Error decoding matches")
+		return nil, err
+	}
+
+	log.Debug().Int("match_count", len(matches)).Msg("Retrieved filtered matches")
+	return matches, nil
 }

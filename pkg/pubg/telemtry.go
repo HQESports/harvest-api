@@ -109,7 +109,7 @@ func ProcessTelemetry(data []byte) (*TelemetryData, error) {
 
 		// Process based on event type
 		switch eventType {
-		case "LogPlayerPosition":
+		case "LogVehicleLeave": // Changed from LogPlayerPosition to LogVehicleRide to match the event type in your JSON
 			// Check if this event has vehicle data
 			vehicleData, hasVehicle := eventData["vehicle"]
 			if !hasVehicle {
@@ -131,29 +131,46 @@ func ProcessTelemetry(data []byte) (*TelemetryData, error) {
 				continue
 			}
 
-			// Check if this is the transport aircraft
-			if vehicle.VehicleType == "TransportAircraft" ||
-				vehicle.VehicleId == "DummyTransportAircraft_C" {
+			// Check if this is the transport aircraft - only check vehicleType
+			if vehicle.VehicleType == "TransportAircraft" {
+				// Extract character location as the plane position
+				var character struct {
+					Location struct {
+						X float64 `json:"x"`
+						Y float64 `json:"y"`
+						Z float64 `json:"z"`
+					} `json:"location"`
+				}
+
+				characterData, hasCharacter := eventData["character"]
+				if !hasCharacter {
+					continue
+				}
+
+				if err := json.Unmarshal(characterData, &character); err != nil {
+					continue
+				}
+
 				// If we don't have a start point yet, set it
 				if result.PlanePath.StartPoint == (Position{}) {
 					result.PlanePath.StartPoint = Position{
-						X: vehicle.Location.X,
-						Y: vehicle.Location.Y,
+						X: character.Location.X,
+						Y: character.Location.Y,
 					}
 					log.Info().
-						Float64("x", vehicle.Location.X).
-						Float64("y", vehicle.Location.Y).
+						Float64("x", character.Location.X).
+						Float64("y", character.Location.Y).
 						Msg("Set plane path start point")
 				}
 
 				// Always update the end point with each new position
 				result.PlanePath.EndPoint = Position{
-					X: vehicle.Location.X,
-					Y: vehicle.Location.Y,
+					X: character.Location.X,
+					Y: character.Location.Y,
 				}
 				log.Debug().
-					Float64("x", vehicle.Location.X).
-					Float64("y", vehicle.Location.Y).
+					Float64("x", character.Location.X).
+					Float64("y", character.Location.Y).
 					Msg("Updated plane path end point")
 			}
 

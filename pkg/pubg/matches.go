@@ -260,7 +260,7 @@ func (m *PUBGMatchResponse) GetMatchType(shard string) string {
 
 	if m.Data.Attributes.GameMode == "squad-fpp" && m.Data.Attributes.MatchType == "competitive" && !m.Data.Attributes.IsCustomMatch {
 		matchType = "ranked"
-	} else if m.Data.Attributes.GameMode == "esports-squad-fpp" && m.Data.Attributes.IsCustomMatch {
+	} else if strings.Contains(m.Data.Attributes.GameMode, "esports") && m.Data.Attributes.IsCustomMatch {
 		matchType = "scrim"
 	} else {
 		matchType = "invalid"

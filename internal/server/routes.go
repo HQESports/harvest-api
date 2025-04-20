@@ -30,6 +30,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	{
 		pubg := api.Group("/pubg")
 		{
+			pubg.GET("/matches", s.filteredMatchesHandler)
 			pubg.POST("/names", s.namesHandler)
 		}
 
