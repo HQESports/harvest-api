@@ -10,6 +10,9 @@ rabbit:
 pubg:
 	go run cmd/pubg/main.go
 
+unplayable:
+	go run cmd/unplayable/main.go
+
 # Creates initial admin token based off of config.json
 token:
 	go run cmd/tokengen/main.go
