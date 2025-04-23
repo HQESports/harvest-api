@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"harvest/internal/aws"
 	"harvest/internal/cache"
 	"harvest/internal/config"
 	"harvest/internal/database"
@@ -75,8 +76,15 @@ func main() {
 	// Registering processors
 	registry := orchestrator.NewWorkerRegistry(playerWorker, matchWorker, tournamentWorker, tournamentMatchWorker, processMatchesWorker)
 
+	// Create AWS File Service
+	fileService, err := aws.NewFileService(cfg.AWS.S3.AccessKeyID, cfg.AWS.S3.SecretAccessKey, cfg.AWS.S3.Bucket, cfg.AWS.Region)
+	if err != nil {
+		log.Error().Err(err).Msg("could not create AWS File Service")
+		return
+	}
+
 	// Create and start HTTP server
-	srv := server.New(*cfg, db, cache, rabbit, *pubgClient, registry)
+	srv := server.New(*cfg, db, cache, rabbit, *pubgClient, registry, fileService)
 
 	// Start the server in a goroutine to avoid blocking
 	go func() {

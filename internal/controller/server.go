@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"harvest/internal/aws"
 	"harvest/internal/cache"
 	"harvest/internal/database"
 	"harvest/internal/rabbitmq"
@@ -12,19 +13,22 @@ type ServerController interface {
 	CacheHealth() error
 	RabbitHealth() error
 	Online() string
+	AWSFileServiceHealth() error
 }
 
 type serverController struct {
 	db     database.Database
 	cache  cache.Cache
 	rabbit rabbitmq.Client
+	fs     aws.FileService
 }
 
-func NewServer(db database.Database, cache cache.Cache, rabbit rabbitmq.Client) ServerController {
+func NewServer(db database.Database, cache cache.Cache, rabbit rabbitmq.Client, fileService aws.FileService) ServerController {
 	return &serverController{
 		db:     db,
 		cache:  cache,
 		rabbit: rabbit,
+		fs:     fileService,
 	}
 }
 
@@ -42,4 +46,8 @@ func (sc *serverController) CacheHealth() error {
 
 func (sc *serverController) RabbitHealth() error {
 	return sc.rabbit.Health()
+}
+
+func (sc *serverController) AWSFileServiceHealth() error {
+	return sc.fs.TestConnection()
 }

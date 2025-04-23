@@ -32,11 +32,13 @@ func (s *Server) readyHandler(c *gin.Context) {
 	dbErr := s.sc.DBHealth()
 	cacheErr := s.sc.CacheHealth()
 	rabbitErr := s.sc.RabbitHealth()
+	fsErr := s.sc.AWSFileServiceHealth()
 
 	res := gin.H{
-		"database": dbErr == nil,
-		"cache":    cacheErr == nil,
-		"rabbit":   rabbitErr == nil,
+		"database":     dbErr == nil,
+		"cache":        cacheErr == nil,
+		"rabbit":       rabbitErr == nil,
+		"file_service": fsErr == nil,
 	}
 
 	if dbErr != nil || cacheErr != nil {

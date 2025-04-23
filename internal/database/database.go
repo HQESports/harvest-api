@@ -22,12 +22,13 @@ type mongoDB struct {
 	client *mongo.Client
 	db     *mongo.Database
 
-	trainCol       *mongo.Collection
-	playersCol     *mongo.Collection
-	tournamentsCol *mongo.Collection
-	matchesCol     *mongo.Collection
-	tokensCol      *mongo.Collection
-	jobsCol        *mongo.Collection
+	trainCol         *mongo.Collection
+	playersCol       *mongo.Collection
+	tournamentsCol   *mongo.Collection
+	matchesCol       *mongo.Collection
+	tokensCol        *mongo.Collection
+	jobsCol          *mongo.Collection
+	organizationsCol *mongo.Collection
 }
 
 func New(config *config.Config) (Database, error) {
@@ -49,14 +50,15 @@ func New(config *config.Config) (Database, error) {
 	jobsCol := db.Collection("jobs")
 
 	return &mongoDB{
-		client:         client,
-		db:             db,
-		trainCol:       db.Collection("erangel_train"),
-		playersCol:     db.Collection("players"),
-		tournamentsCol: db.Collection("tournaments"),
-		matchesCol:     db.Collection("matches"),
-		jobsCol:        jobsCol,
-		tokensCol:      tokensCol,
+		client:           client,
+		db:               db,
+		trainCol:         db.Collection("erangel_train"),
+		playersCol:       db.Collection("players"),
+		tournamentsCol:   db.Collection("tournaments"),
+		matchesCol:       db.Collection("matches"),
+		organizationsCol: db.Collection("organizations"),
+		jobsCol:          jobsCol,
+		tokensCol:        tokensCol,
 	}, nil
 }
 

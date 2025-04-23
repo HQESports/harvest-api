@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"harvest/internal/aws"
 	"harvest/internal/cache"
 	"harvest/internal/config"
 	"harvest/internal/controller"
@@ -23,8 +24,8 @@ type Server struct {
 	config config.Config
 }
 
-func New(config config.Config, db database.Database, cache cache.Cache, rabbit rabbitmq.Client, client pubg.Client, workerRegistry orchestrator.WorkerRegistry) *http.Server {
-	sc := controller.NewServer(db, cache, rabbit)
+func New(config config.Config, db database.Database, cache cache.Cache, rabbit rabbitmq.Client, client pubg.Client, workerRegistry orchestrator.WorkerRegistry, fileService aws.FileService) *http.Server {
+	sc := controller.NewServer(db, cache, rabbit, fileService)
 
 	jc := controller.NewJobController(db, rabbit, config.RabbitMQ, config.Jobs, workerRegistry)
 	jc.ProcessJobs(context.Background()) // Starts consuming messages from rabbit MQ

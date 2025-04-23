@@ -5,7 +5,6 @@ import (
 	"harvest/internal/database"
 	"harvest/internal/model"
 	"harvest/pkg/pubg"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -18,72 +17,6 @@ type MatchFilter struct {
 	StartDate  *time.Time `json:"startDate"`
 	EndDate    *time.Time `json:"endDate"`
 	Limit      int        `json:"limit"`
-}
-
-// JobMetrics tracks metrics for long-running operations
-type JobMetrics struct {
-	TotalItems      int
-	ProcessedItems  atomic.Int32
-	SuccessfulItems atomic.Int32
-	FailedItems     atomic.Int32
-	StartTime       time.Time
-	EndTime         time.Time
-}
-
-// NewJobMetrics creates a new JobMetrics instance
-func NewJobMetrics(totalItems int) *JobMetrics {
-	return &JobMetrics{
-		TotalItems: totalItems,
-		StartTime:  time.Now(),
-	}
-}
-
-// LogProgress logs the current progress of the job
-func (jm *JobMetrics) LogProgress(jobName string) {
-	processed := jm.ProcessedItems.Load()
-	successful := jm.SuccessfulItems.Load()
-	failed := jm.FailedItems.Load()
-
-	elapsed := time.Since(jm.StartTime)
-	var itemsPerSecond float64
-	if elapsed.Seconds() > 0 {
-		itemsPerSecond = float64(processed) / elapsed.Seconds()
-	}
-
-	percentComplete := 0.0
-	if jm.TotalItems > 0 {
-		percentComplete = float64(processed) / float64(jm.TotalItems) * 100
-	}
-
-	log.Info().
-		Str("job_name", jobName).
-		Int32("processed", processed).
-		Int32("successful", successful).
-		Int32("failed", failed).
-		Int("total", jm.TotalItems).
-		Float64("percent_complete", percentComplete).
-		Float64("items_per_second", itemsPerSecond).
-		Msg("Job progress")
-}
-
-// Complete marks the job as complete and logs final metrics
-func (jm *JobMetrics) Complete(jobName string) {
-	jm.EndTime = time.Now()
-	elapsed := jm.EndTime.Sub(jm.StartTime)
-
-	processed := jm.ProcessedItems.Load()
-	successful := jm.SuccessfulItems.Load()
-	failed := jm.FailedItems.Load()
-
-	log.Info().
-		Str("job_name", jobName).
-		Int32("processed", processed).
-		Int32("successful", successful).
-		Int32("failed", failed).
-		Int("total", jm.TotalItems).
-		Dur("duration", elapsed).
-		Float64("items_per_second", float64(processed)/elapsed.Seconds()).
-		Msg("Job completed")
 }
 
 type PubgController interface {

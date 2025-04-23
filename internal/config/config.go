@@ -18,6 +18,20 @@ type Config struct {
 	CORS     CORSConfig     `json:"cors"`
 	RabbitMQ RabbitMQConfig `json:"rabbitmq"` // Add this new field
 	Jobs     JobsConfig     `json:"jobs"`     // Add this new field
+	AWS      AWSConfig      `json:"aws"`      // Add this new field
+}
+
+// AWSConfig contains AWS-related configurations
+type AWSConfig struct {
+	S3     S3Config `json:"s3"`
+	Region string   `json:"region"`
+}
+
+// S3Config contains S3-specific configurations
+type S3Config struct {
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key"`
+	Bucket          string `json:"bucket"`
 }
 
 // RedisConfig contains Redis connection details

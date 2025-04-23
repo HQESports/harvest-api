@@ -98,3 +98,11 @@ type BulkImportResult struct {
 	DuplicateCount int
 	FailureCount   int
 }
+
+type Organization struct {
+	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name      string             `bson:"name" json:"name"`
+	ImageURL  string             `bson:"image_url" json:"imageUrl"`
+	CreatedAt time.Time          `bson:"created_at" json:"createdAt"`
+	UpdatedAt time.Time          `bson:"updated_at" json:"updatedAt"`
+}
