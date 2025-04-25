@@ -16,12 +16,13 @@ import (
 )
 
 type Server struct {
-	sc     controller.ServerController
-	pc     controller.PubgController
-	tc     controller.TokenController
-	jc     controller.JobController
-	mc     controller.MetricsController
-	config config.Config
+	sc             controller.ServerController
+	pc             controller.PubgController
+	tc             controller.TokenController
+	jc             controller.JobController
+	mc             controller.MetricsController
+	teamController controller.TeamController
+	config         config.Config
 }
 
 func New(config config.Config, db database.Database, cache cache.Cache, rabbit rabbitmq.Client, client pubg.Client, workerRegistry orchestrator.WorkerRegistry, fileService aws.FileService) *http.Server {
@@ -35,14 +36,16 @@ func New(config config.Config, db database.Database, cache cache.Cache, rabbit r
 	mc := controller.NewMetricsController(db)
 
 	tc := controller.NewToken(db)
+	teamController := controller.NewTeamController(db, fileService)
 
 	server := Server{
-		sc:     sc,
-		pc:     pc,
-		tc:     tc,
-		jc:     jc,
-		mc:     mc,
-		config: config,
+		sc:             sc,
+		pc:             pc,
+		tc:             tc,
+		jc:             jc,
+		mc:             mc,
+		teamController: *teamController,
+		config:         config,
 	}
 
 	return &http.Server{

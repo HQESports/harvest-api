@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"harvest/internal/model"
 	"time"
 
@@ -28,6 +29,9 @@ type PubgDatabase interface {
 
 	UpdateMatchesWithTelemetryData(context.Context, map[string]*model.TelemetryData) (int, error)
 	GetMatchesByFilters(ctx context.Context, mapName string, matchTypes []string, startDate *time.Time, endDate *time.Time, limit int) ([]model.Match, error)
+
+	AddTeamRotationToMatch(context.Context, string, model.TeamRotation) error
+	GetMatchByID(context.Context, string) (*model.Match, error)
 }
 
 func (m *mongoDB) BulkUpsertPlayers(ctx context.Context, entities []model.Entity) (*mongo.BulkWriteResult, error) {
@@ -438,4 +442,93 @@ func (m *mongoDB) GetMatchesByFilters(ctx context.Context, mapName string, match
 
 	log.Debug().Int("match_count", len(matches)).Msg("Retrieved filtered matches")
 	return matches, nil
+}
+
+// GetMatchByID retrieves a match by its match ID
+func (m *mongoDB) GetMatchByID(ctx context.Context, matchID string) (*model.Match, error) {
+	// Create filter for this match
+	filter := bson.M{"match_id": matchID}
+
+	// Execute the find operation
+	var match model.Match
+	err := m.matchesCol.FindOne(ctx, filter).Decode(&match)
+
+	// Check if the error is "no documents found"
+	if err == mongo.ErrNoDocuments {
+		// Return nil match and nil error to indicate match doesn't exist
+		return nil, nil
+	}
+
+	// If there was another error, return it
+	if err != nil {
+		log.Error().Msgf("Error retrieving match by ID: %v", err)
+		return nil, err
+	}
+
+	// Match was found, return it
+	return &match, nil
+}
+
+// AddOrUpdateTeamRotation adds a team's rotation data to a match or updates it if it already exists
+func (m *mongoDB) AddOrUpdateTeamRotation(ctx context.Context, matchID string, rotation model.TeamRotation) error {
+	// Create filter for this match
+	filter := bson.M{"match_id": matchID}
+
+	// First check if this team already has a rotation in this match
+	teamFilter := bson.M{
+		"match_id":               matchID,
+		"team_rotations.team_id": rotation.TeamID,
+	}
+
+	// Check if the team rotation already exists
+	count, err := m.matchesCol.CountDocuments(ctx, teamFilter)
+	if err != nil {
+		log.Error().Msgf("Error checking team rotation existence: %v", err)
+		return err
+	}
+
+	var result *mongo.UpdateResult
+
+	if count > 0 {
+		// Update existing team rotation
+		update := bson.M{
+			"$set": bson.M{
+				"team_rotations.$[elem]": rotation,
+			},
+		}
+
+		// Set up array filter to match the team ID
+		arrayFilters := options.ArrayFilters{
+			Filters: []interface{}{
+				bson.M{"elem.team_id": rotation.TeamID},
+			},
+		}
+
+		opts := options.Update().SetArrayFilters(arrayFilters)
+
+		// Execute the update
+		result, err = m.matchesCol.UpdateOne(ctx, filter, update, opts)
+	} else {
+		// Add new team rotation
+		update := bson.M{
+			"$push": bson.M{
+				"team_rotations": rotation,
+			},
+		}
+
+		// Execute the update
+		result, err = m.matchesCol.UpdateOne(ctx, filter, update)
+	}
+
+	if err != nil {
+		log.Error().Msgf("Error adding/updating team rotation: %v", err)
+		return err
+	}
+
+	// Check if the match was found
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("match with ID %s not found", matchID)
+	}
+
+	return nil
 }

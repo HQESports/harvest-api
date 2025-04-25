@@ -56,6 +56,9 @@ type Match struct {
 
 	// Telemetry data organized under an umbrella field
 	TelemetryData *TelemetryData `bson:"telemetry_data,omitempty"` // All extracted telemetry data
+
+	// Team rotations at top level
+	TeamRotations []TeamRotation `bson:"team_rotations,omitempty`
 }
 
 // TelemetryData contains all extracted data from telemetry
@@ -99,10 +102,35 @@ type BulkImportResult struct {
 	FailureCount   int
 }
 
-type Organization struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name      string             `bson:"name" json:"name"`
-	ImageURL  string             `bson:"image_url" json:"imageUrl"`
-	CreatedAt time.Time          `bson:"created_at" json:"createdAt"`
-	UpdatedAt time.Time          `bson:"updated_at" json:"updatedAt"`
+// Player represents an esports player
+type Player struct {
+	Name           string `json:"name" bson:"name"`
+	IsPriority     bool   `json:"isPriority" bson:"isPriority"`
+	LiveServerIGN  string `json:"liveServerIGN" bson:"liveServerIGN"`
+	EventServerIGN string `json:"eventServerIGN" bson:"eventServerIGN"`
+}
+
+// Team represents an esports team with players
+type Team struct {
+	ID          primitive.ObjectID `json:"_id" bson:"_id,omitempty"`
+	Name        string             `json:"name" bson:"name"`
+	ImageURL    string             `json:"imageUrl" bson:"imageUrl"`
+	EsportTag   string             `json:"esportTag" bson:"esportTag"`
+	SearchCount int                `json:"searchCount" bson:"searchCount" validate:"min=2,max=4"`
+	Players     []Player           `json:"players" bson:"players"`
+}
+
+// TeamRotation represents the movement of a team during a match
+type TeamRotation struct {
+	TeamID    string     `bson:"team_id"`   // Reference to team
+	TeamName  string     `bson:"team_name"` // For easier querying
+	Positions []Position `bson:"positions"` // Array of positions throughout the match
+}
+
+// Position represents a single location point with timestamp
+type Position struct {
+	X         float64   `bson:"x"`         // X coordinate
+	Y         float64   `bson:"y"`         // Y coordinate
+	Timestamp time.Time `bson:"timestamp"` // When the team was at this position
+	Phase     int       `bson:"phase"`     // Which circle phase this position corresponds to
 }

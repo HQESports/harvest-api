@@ -44,6 +44,15 @@ func (s *Server) RegisterRoutes() http.Handler {
 			jobs.DELETE("/:type", s.CancelJobHandler)
 		}
 
+		teams := api.Group("/teams")
+		{
+			teams.POST("", s.CreateTeamHandler)       // Create a new team
+			teams.GET("", s.ListTeamsHandler)         // List all teams
+			teams.GET("/:id", s.GetTeamHandler)       // Get a specific team by ID
+			teams.PUT("/:id", s.UpdateTeamHandler)    // Update a team
+			teams.DELETE("/:id", s.DeleteTeamHandler) // Delete a team
+		}
+
 		metrics := api.Group("/metrics")
 		{
 			metrics.GET("/total", s.GetTotalMatchCountHandler)

@@ -9,7 +9,6 @@ import (
 	"harvest/pkg/pubg"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -249,50 +248,10 @@ func (t *tournamentMatchExpanderWorker) BuildMatchDocument(matchID, shard string
 		return nil, false, nil
 	}
 
-	// Parse the match creation time
-	createdAt, err := time.Parse(time.RFC3339, match.Data.Attributes.CreatedAt)
+	matchDocument, err := orchestrator.BuildMatchDocument(shard, matchID, *match)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse match creation time")
-		return nil, true, fmt.Errorf("failed to parse creation time: %w", err)
-	}
-
-	// Get telemetry URL
-	telemetryURL, err := match.GetTelemetryURL()
-	if err != nil {
-		log.Warn().Err(err).Msg("Could not retrieve telemetry URL")
-		// Continue processing even if telemetry URL cannot be retrieved
-	}
-
-	// Calculate player and team counts
-	playerCount := 0
-	teamCount := 0
-
-	for _, obj := range match.Included {
-		if obj.Type == "participant" && obj.IsValidPlayer() {
-			playerCount++
-		} else if obj.Type == "roster" {
-			teamCount++
-		}
-	}
-
-	matchDocument := model.Match{
-		MatchID:       matchID,
-		ShardID:       shard,
-		MapName:       match.Data.Attributes.MapName,
-		GameMode:      match.Data.Attributes.GameMode,
-		Duration:      match.Data.Attributes.Duration,
-		IsCustomMatch: match.Data.Attributes.IsCustomMatch,
-		CreatedAt:     createdAt,
-		MatchType:     match.GetMatchType(pubg.EventPlatform),
-
-		// Processing metadata
-		Processed:  false,
-		ImportedAt: time.Now(),
-
-		// Statistics and counts
-		PlayerCount:  playerCount,
-		TeamCount:    teamCount,
-		TelemetryURL: telemetryURL,
+		log.Error().Err(err).Msg("could not build match document")
+		return nil, true, err
 	}
 
 	return &matchDocument, true, nil
