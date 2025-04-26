@@ -3,7 +3,7 @@
     "port": 3000,
     "app_name": "Harvest API",
     "redis": {
-        "address": "redis.railway.internal",
+        "address": "redis.railway.internal:6379",
         "password": "gXnNlfFbrzRxwRiIlxILdXqNXqdAlqrt",
         "db": 0,
         "prefix": "pubg"
