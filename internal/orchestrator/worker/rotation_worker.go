@@ -144,9 +144,25 @@ func (r *rotationWorker) processTeam(team model.Team) model.JobMetrics {
 
 	metrics.ProcessedItems += len(matchIDMap)
 
-	
+	for matchID, _ := range matchIDMap {
+		match, err := r.pubgClient.GetMatch(pubg.SteamPlatform, matchID)
+		if err != nil {
+			log.Error().Err(err).Msg("could not get pubg match")
+		}
+		r.processMatch(match)
+	}
 
 	return metrics
+}
+
+func (r *rotationWorker) processMatch(match *pubg.PUBGMatchResponse) {
+	_, err := orchestrator.BuildMatchDocument(pubg.SteamPlatform, *match)
+
+	if err != nil {
+		log.Error().Err(err).Msg("not able to build match document")
+	}
+
+	
 }
 
 // Type implements orchestrator.BatchWorker.

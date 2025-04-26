@@ -248,7 +248,7 @@ func (t *tournamentMatchExpanderWorker) BuildMatchDocument(matchID, shard string
 		return nil, false, nil
 	}
 
-	matchDocument, err := orchestrator.BuildMatchDocument(shard, matchID, *match)
+	matchDocument, err := orchestrator.BuildMatchDocument(shard, *match)
 	if err != nil {
 		log.Error().Err(err).Msg("could not build match document")
 		return nil, true, err

@@ -30,8 +30,10 @@ type PubgDatabase interface {
 	UpdateMatchesWithTelemetryData(context.Context, map[string]*model.TelemetryData) (int, error)
 	GetMatchesByFilters(ctx context.Context, mapName string, matchTypes []string, startDate *time.Time, endDate *time.Time, limit int) ([]model.Match, error)
 
-	AddTeamRotationToMatch(context.Context, string, model.TeamRotation) error
+	AddOrUpdateTeamRotation(context.Context, string, model.TeamRotation) error
 	GetMatchByID(context.Context, string) (*model.Match, error)
+
+	GetOrCreateMatch(context.Context, model.Match) (*model.Match, error)
 }
 
 func (m *mongoDB) BulkUpsertPlayers(ctx context.Context, entities []model.Entity) (*mongo.BulkWriteResult, error) {
@@ -531,4 +533,33 @@ func (m *mongoDB) AddOrUpdateTeamRotation(ctx context.Context, matchID string, r
 	}
 
 	return nil
+}
+
+// GetOrCreateMatch checks if a match exists with the given match_id and returns it if found,
+// otherwise creates a new match with the provided data and returns it
+func (m *mongoDB) GetOrCreateMatch(ctx context.Context, match model.Match) (*model.Match, error) {
+	// First check if the match already exists
+	existingMatch, err := m.GetMatchByID(ctx, match.MatchID)
+	if err != nil {
+		log.Error().Msgf("Error checking if match exists: %v", err)
+		return nil, err
+	}
+
+	// If the match exists, return it
+	if existingMatch != nil {
+		return existingMatch, nil
+	}
+
+	// Match doesn't exist, so insert the new match
+	match.ImportedAt = time.Now() // Set import timestamp
+
+	// Insert the new match
+	_, err = m.matchesCol.InsertOne(ctx, match)
+	if err != nil {
+		log.Error().Msgf("Failed to create new match: %v", err)
+		return nil, err
+	}
+
+	// Return the newly created match
+	return &match, nil
 }

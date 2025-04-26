@@ -67,7 +67,7 @@ func SplitIntoBatches[T any](items []T, batchSize int) [][]T {
 	return batches
 }
 
-func BuildMatchDocument(shard, matchID string, match pubg.PUBGMatchResponse) (model.Match, error) {
+func BuildMatchDocument(shard string, match pubg.PUBGMatchResponse) (model.Match, error) {
 	createdAt, err := time.Parse(time.RFC3339, match.Data.Attributes.CreatedAt)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to parse match creation time")
@@ -95,7 +95,7 @@ func BuildMatchDocument(shard, matchID string, match pubg.PUBGMatchResponse) (mo
 	}
 
 	return model.Match{
-		MatchID:       matchID,
+		MatchID:       match.Data.ID,
 		ShardID:       shard,
 		MapName:       match.Data.Attributes.MapName,
 		GameMode:      match.Data.Attributes.GameMode,

@@ -122,9 +122,17 @@ type Team struct {
 
 // TeamRotation represents the movement of a team during a match
 type TeamRotation struct {
-	TeamID    string     `bson:"team_id"`   // Reference to team
-	TeamName  string     `bson:"team_name"` // For easier querying
-	Positions []Position `bson:"positions"` // Array of positions throughout the match
+	TeamID          string           `bson:"team_id"`          // Reference to team
+	TeamName        string           `bson:"team_name"`        // For easier querying
+	Positions       []Position       `bson:"positions"`        // Array of team center positions throughout the match
+	PlayerRotations []PlayerRotation `bson:"player_rotations"` // Array of individual player rotations
+}
+
+// PlayerRotation represents the movement of a single player during a match
+type PlayerRotation struct {
+	PlayerID   string     `bson:"player_id"`   // Reference to player
+	PlayerName string     `bson:"player_name"` // For easier querying
+	Positions  []Position `bson:"positions"`   // Array of positions throughout the match
 }
 
 // Position represents a single location point with timestamp
