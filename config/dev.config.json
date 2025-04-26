@@ -3,8 +3,8 @@
     "port": 3000,
     "app_name": "Harvest API",
     "redis": {
-        "address": "redis.railway.internal",
-        "password": "gXnNlfFbrzRxwRiIlxILdXqNXqdAlqrt",
+        "address": "localhost:6379",
+        "password": "",
         "db": 0,
         "prefix": "pubg"
     },
@@ -43,9 +43,9 @@
         "default_cache_ttl": 5
     },
     "mongodb": {
-        "uri": "mongodb://mongodb.railway.internal",
-        "username": "mongo",
-        "password": "YNaweecjEMlRXnfRprPkktVyLoojehWF",
+        "uri": "mongodb://localhost:27017",
+        "username": "root",
+        "password": "password",
         "db": "pubg",
         "options": {
             "connectTimeoutMS": 30000,
@@ -58,9 +58,9 @@
         "directory": "./logs"
     },
     "rabbitmq": {
-        "username": "7RYd6vmB0woEkKz4",
-        "password": "4JoeueDEPlfADpNeHUM8GsGZnCCFaCFp",
-        "host": "rabbitmq.railway.internal",
+        "username": "admin",
+        "password": "password",
+        "host": "localhost",
         "port": 5672,
         "vhost": "/",
         "routing_key": "jobs",
