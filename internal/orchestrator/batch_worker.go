@@ -67,11 +67,11 @@ func SplitIntoBatches[T any](items []T, batchSize int) [][]T {
 	return batches
 }
 
-func BuildMatchDocument(shard string, match pubg.PUBGMatchResponse) (model.Match, error) {
+func BuildMatchDocument(shard string, match pubg.PUBGMatchResponse) (*model.Match, error) {
 	createdAt, err := time.Parse(time.RFC3339, match.Data.Attributes.CreatedAt)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to parse match creation time")
-		return model.Match{}, fmt.Errorf("failed to parse creation time: %w", err)
+		return nil, fmt.Errorf("failed to parse creation time: %w", err)
 	}
 
 	// Calculate player and team counts
@@ -91,10 +91,10 @@ func BuildMatchDocument(shard string, match pubg.PUBGMatchResponse) (model.Match
 	if err != nil {
 		log.Warn().Err(err).Msg("Could not retrieve telemetry URL")
 		// Continue processing even if telemetry URL cannot be retrieved
-		return model.Match{}, err
+		return nil, err
 	}
 
-	return model.Match{
+	return &model.Match{
 		MatchID:       match.Data.ID,
 		ShardID:       shard,
 		MapName:       match.Data.Attributes.MapName,

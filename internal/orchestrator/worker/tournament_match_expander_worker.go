@@ -254,7 +254,7 @@ func (t *tournamentMatchExpanderWorker) BuildMatchDocument(matchID, shard string
 		return nil, true, err
 	}
 
-	return &matchDocument, true, nil
+	return matchDocument, true, nil
 }
 
 // isCancelled returns true if the worker has been cancelled

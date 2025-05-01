@@ -272,3 +272,91 @@ func (m *PUBGMatchResponse) GetMatchType(shard string) string {
 func (m *PUBGMatchResponse) IsMatchOldEnough(timeElapsed int) bool {
 	return m.Data.Attributes.Duration >= timeElapsed
 }
+
+// ArePlayersOnSameTeam checks if all specified player names are on the same team
+func (m *PUBGMatchResponse) ArePlayersOnSameTeam(playerNames []string) (bool, string) {
+	// Exit early if no players are provided or only one player (trivially true)
+	if len(playerNames) == 0 {
+		return false, "No player names provided"
+	}
+	if len(playerNames) == 1 {
+		return true, "Only one player name provided"
+	}
+
+	// First, find all participant objects that match our player names
+	matchedParticipants := make(map[string]IncludedObject)
+	participantRosterMap := make(map[string]string) // Maps participant ID to roster ID
+
+	// First pass: Get participant IDs for our player names
+	for _, obj := range m.Included {
+		if obj.Type == "participant" {
+			name, ok := obj.GetName()
+			if !ok {
+				continue
+			}
+
+			// Check if this player is in our list
+			for _, playerName := range playerNames {
+				if name == playerName {
+					matchedParticipants[obj.ID] = obj
+					break
+				}
+			}
+		}
+	}
+
+	// Check if we found all players
+	if len(matchedParticipants) != len(playerNames) {
+		return false, "Not all players found in match data"
+	}
+
+	// Second pass: Find which roster each participant belongs to
+	for _, obj := range m.Included {
+		if obj.Type == "roster" {
+			// Check if this roster contains any of our participants
+			if relationships, ok := obj.Relationships["participants"]; ok {
+				if data, ok := relationships.(map[string]interface{})["data"]; ok {
+					if participants, ok := data.([]interface{}); ok {
+						for _, participant := range participants {
+							if p, ok := participant.(map[string]interface{}); ok {
+								if pID, ok := p["id"].(string); ok {
+									// Check if this participant is one of our matched players
+									if _, exists := matchedParticipants[pID]; exists {
+										participantRosterMap[pID] = obj.ID
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Check if all participants are mapped to rosters
+	if len(participantRosterMap) != len(matchedParticipants) {
+		return false, "Could not find roster information for all players"
+	}
+
+	// Check if all participants are on the same roster
+	var commonRosterID string
+	for participantID, rosterID := range participantRosterMap {
+		if commonRosterID == "" {
+			commonRosterID = rosterID
+		} else if commonRosterID != rosterID {
+			// Found a player on a different roster
+			return false, "Players are on different teams"
+		}
+
+		// Debug log
+		if playerName, _ := matchedParticipants[participantID].GetName(); playerName != "" {
+			log.Debug().
+				Str("player", playerName).
+				Str("roster_id", rosterID).
+				Msg("Found player's roster")
+		}
+	}
+
+	// All matched players are on the same roster (team)
+	return true, "All players are on the same team"
+}

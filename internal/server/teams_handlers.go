@@ -5,6 +5,7 @@ import (
 	"harvest/internal/model"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
@@ -27,6 +28,28 @@ type TeamResponse struct {
 	EsportTag   string         `json:"esportTag"`
 	SearchCount int            `json:"searchCount"`
 	Players     []model.Player `json:"players"`
+}
+
+// TeamRotationResponse represents the response for team rotation data
+type TeamRotationResponse struct {
+	ID              string                 `json:"id"`
+	MatchID         string                 `json:"match_id"`
+	TeamID          string                 `json:"team_id"`
+	Match           model.Match            `json:"match"`
+	PlayerRotations []model.PlayerRotation `json:"player_rotations"`
+	CreatedAt       time.Time              `json:"created_at"`
+	UpdatedAt       time.Time              `json:"updated_at"`
+}
+
+// TeamRotationResponse represents the response for team rotation data
+type TeamRotationTinyResponse struct {
+	ID              string                 `json:"id"`
+	MatchID         string                 `json:"match_id"`
+	TeamID          string                 `json:"team_id"`
+	Match           model.Match            `json:"match"`
+	PlayerRotations []model.PlayerRotation `json:"player_rotations"`
+	CreatedAt       time.Time              `json:"created_at"`
+	UpdatedAt       time.Time              `json:"updated_at"`
 }
 
 // CreateTeamHandler creates a new team
@@ -209,4 +232,62 @@ func convertTeamToResponse(team *model.Team) TeamResponse {
 		SearchCount: team.SearchCount,
 		Players:     team.Players,
 	}
+}
+
+// GetTeamRotationsHandler returns all rotations for a specific team
+func (s *Server) GetTeamRotationsHandler(c *gin.Context) {
+	teamIDStr := c.Param("id")
+
+	startDate := c.Query("startDate")
+	endDate := c.Query("endDate")
+	var start, end time.Time = time.Time{}, time.Now()
+	if startDate != "" {
+		t, err := time.Parse(time.RFC3339, startDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start date format"})
+			return
+		}
+		start = t
+	}
+	if endDate != "" {
+		t, err := time.Parse(time.RFC3339, endDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end date format"})
+			return
+		}
+		end = t
+	}
+	if start.After(end) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Start date cannot be after end date"})
+		return
+	}
+
+	teamRotations, err := s.teamController.GetTeamRotations(c.Request.Context(), teamIDStr, start, end)
+
+	if err != nil {
+		log.Error().Err(err).Str("teamID", teamIDStr).Msg("Failed to get team rotations")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get team rotations: " + err.Error()})
+		return
+	}
+
+	if len(teamRotations) == 0 {
+		c.JSON(http.StatusOK, []TeamRotationTinyResponse{})
+		return
+	}
+
+	c.JSON(http.StatusOK, teamRotations)
+}
+
+func (s *Server) GetTeamRotationByIDHandler(c *gin.Context) {
+	rotationID := c.Param("id")
+
+	rotation, err := s.teamController.GetRotationByID(c.Request.Context(), rotationID)
+
+	if err != nil {
+		log.Error().Err(err).Str("teamID", rotationID).Msg("Failed to get team rotation")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get rotation: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, rotation)
 }

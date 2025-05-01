@@ -1,0 +1,96 @@
+{
+    "env": "dev",
+    "port": 3000,
+    "app_name": "Harvest API",
+    "redis": {
+        "address": "redis.railway.internal:6379",
+        "password": "gXnNlfFbrzRxwRiIlxILdXqNXqdAlqrt",
+        "db": 0,
+        "prefix": "pubg"
+    },
+    "cors": {
+        "allowed_origins": [
+            "http://localhost:5173"
+        ],
+        "allowed_methods": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "OPTIONS"
+        ],
+        "allowed_headers": [
+            "Accept",
+            "Authorization",
+            "Content-Type",
+            "X-CSRF-Token"
+        ],
+        "allow_credentials": true,
+        "max_age": 86400
+    },
+    "pubg": {
+        "api_key": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiIwNTgyNDYzMC04YjAyLTAxM2EtNzJmZC0zOWI5Nzc1NTkyMzkiLCJpc3MiOiJnYW1lbG9ja2VyIiwiaWF0IjoxNjQ3ODM4OTQ0LCJwdWIiOiJibHVlaG9sZSIsInRpdGxlIjoicHViZyIsImFwcCI6Ii1mYWExN2M2NS1jMDY3LTQwMDgtYTRlYi00MDE5ZjMwNjE5NGUifQ.a7COJpOhVq0dThUulTZBzwr7xfaZIttxZWJxV-xUsYA",
+        "base_url": "https://api.pubg.com",
+        "shards": {
+            "live": "steam",
+            "tournament": "tournament"
+        },
+        "request_delay": 6000,
+        "max_retries": 3,
+        "requests_per_minute": 10,
+        "old_enough_min": 1570,
+        "cache": true,
+        "default_cache_ttl": 5
+    },
+    "mongodb": {
+        "uri": "mongodb://mongodb.railway.internal",
+        "username": "mongo",
+        "password": "YNaweecjEMlRXnfRprPkktVyLoojehWF",
+        "db": "pubg",
+        "options": {
+            "connectTimeoutMS": 30000,
+            "maxPoolSize": 20
+        }
+    },
+    "logging": {
+        "level": "debug",
+        "format": "combined",
+        "directory": "./logs"
+    },
+    "rabbitmq": {
+        "username": "7RYd6vmB0woEkKz4",
+        "password": "4JoeueDEPlfADpNeHUM8GsGZnCCFaCFp",
+        "host": "rabbitmq.railway.internal",
+        "port": 5672,
+        "vhost": "/",
+        "routing_key": "jobs",
+        "exchange_name": "harvest_jobs",
+        "queue_name": "jobs",
+        "prefetch_count": 10,
+        "max_retries": 3
+    },
+    "jobs": {
+        "worker_count": 1,
+        "default_batch_size": 10,
+        "job_types": [
+            {
+                "type": "player_expander_worker",
+                "batch_size": 100
+            },
+            {
+                "type": "tournament_expander_worker",
+                "batch_size": 20
+            }
+        ]
+    },
+    "aws": {
+        "region": "us-east-2",
+        "s3": {
+            "access_key_id": "AKIARPWI3GYSCVIB5J3B",
+            "secret_access_key": "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",
+            "bucket": "nexusbucketpubg",
+            "upload_folder": "uploads",
+            "public_base_url": "https://your-bucket-name.s3.us-east-2.amazonaws.com/"
+        }
+    }
+}

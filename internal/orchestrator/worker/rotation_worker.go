@@ -7,16 +7,18 @@ import (
 	"harvest/internal/model"
 	"harvest/internal/orchestrator"
 	"harvest/pkg/pubg"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 const (
-	ROTATION_TYPE        = "tournament_expander_worker"
-	ROTATION_NAME        = "Tournament Expander Worker"
-	ROTATION_DESCRIPTION = "Pull PUBG tournaments from the PUBG API"
+	ROTATION_TYPE        = "rotation_worker"
+	ROTATION_NAME        = "Rotation Worker"
+	ROTATION_DESCRIPTION = "Search through teams and pull live server rotations"
 )
 
 type rotationWorker struct {
@@ -107,10 +109,16 @@ func (r *rotationWorker) StartWorker(job *model.Job) (bool, error) {
 		return false, err
 	}
 
+	r.db.SetJobTotalBatches(r.SafeContext(), job.ID, len(teams))
 	for _, team := range teams {
 		metrics := r.processTeam(team)
 
 		r.db.UpdateJobMetrics(r.SafeContext(), job.ID, metrics)
+		r.db.IncrementJobBatchesComplete(r.SafeContext(), job.ID, 1)
+
+		if r.isCancelled() {
+			return true, nil
+		}
 	}
 
 	return false, nil
@@ -118,6 +126,9 @@ func (r *rotationWorker) StartWorker(job *model.Job) (bool, error) {
 
 func (r *rotationWorker) processTeam(team model.Team) model.JobMetrics {
 	metrics := model.JobMetrics{}
+	if r.isCancelled() {
+		return metrics
+	}
 
 	playerNames := make([]string, len(team.Players))
 
@@ -144,25 +155,126 @@ func (r *rotationWorker) processTeam(team model.Team) model.JobMetrics {
 
 	metrics.ProcessedItems += len(matchIDMap)
 
-	for matchID, _ := range matchIDMap {
-		match, err := r.pubgClient.GetMatch(pubg.SteamPlatform, matchID)
-		if err != nil {
-			log.Error().Err(err).Msg("could not get pubg match")
+	var wg sync.WaitGroup
+	var mutex sync.Mutex
+
+	wg.Add(len(matchIDMap))
+	teamRotations := make([]model.TeamRotation, 0, len(matchIDMap))
+
+	for matchID := range matchIDMap {
+		if r.isCancelled() {
+			return metrics
 		}
-		r.processMatch(match)
+		go func(matchID string) {
+			if r.isCancelled() {
+				return
+			}
+			defer wg.Done()
+
+			match, err := r.pubgClient.GetMatch(pubg.SteamPlatform, matchID)
+			matchType := match.GetMatchType(pubg.SteamPlatform)
+			if matchType != "scrim" {
+				log.Warn().Str("Match Type", matchType).Msg("invalid match type")
+				metrics.InvalidCount += 1
+				return
+			}
+			if err != nil {
+				log.Error().Err(err).Msg("could not get pubg match")
+			}
+			matchMetrics, rotation := r.processMatch(team, match)
+
+			mutex.Lock()
+			if rotation != nil {
+				teamRotations = append(teamRotations, *rotation)
+			}
+			metrics.FailureCount += matchMetrics.FailureCount
+			metrics.InvalidCount += matchMetrics.InvalidCount
+			mutex.Unlock()
+
+		}(matchID)
 	}
+
+	wg.Wait()
+
+	result, err := r.db.BulkCreateTeamRotations(r.SafeContext(), teamRotations)
+	if err != nil {
+		metrics.FailureCount += 1
+		return metrics
+	}
+
+	metrics.SuccessCount += int(result.UpsertedCount)
+	metrics.WarningCount += int(result.ModifiedCount)
 
 	return metrics
 }
 
-func (r *rotationWorker) processMatch(match *pubg.PUBGMatchResponse) {
-	_, err := orchestrator.BuildMatchDocument(pubg.SteamPlatform, *match)
+func (r *rotationWorker) processMatch(team model.Team, match *pubg.PUBGMatchResponse) (model.JobMetrics, *model.TeamRotation) {
+	metrics := model.JobMetrics{}
+	if r.isCancelled() {
+		return metrics, nil
+	}
+	matchDocument, err := orchestrator.BuildMatchDocument(pubg.SteamPlatform, *match)
+	if err != nil {
+		log.Error().Err(err).Msg("could not build match document")
+		metrics.FailureCount += 1
+		return metrics, nil
+	}
+	_, err = r.db.GetOrCreateMatch(r.SafeContext(), matchDocument)
 
 	if err != nil {
 		log.Error().Err(err).Msg("not able to build match document")
+		metrics.FailureCount += 1
+		return metrics, nil
 	}
 
-	
+	// Succesfully created or found match
+
+	playerNames := make([]string, 0, len(team.Players))
+	for _, player := range team.Players {
+		playerNames = append(playerNames, player.LiveServerIGN)
+	}
+
+	ok, _ := match.ArePlayersOnSameTeam(playerNames)
+
+	if !ok {
+		log.Warn().Msg("match found but players not on the same team")
+		metrics.InvalidCount += 1
+		return metrics, nil
+	}
+
+	if r.isCancelled() {
+		return metrics, nil
+	}
+
+	rotations, err := r.pubgClient.BuildRotationsFromTelemetryYRL(r.SafeContext(), playerNames, matchDocument.TelemetryURL)
+	if err != nil {
+		metrics.FailureCount += 1
+		return metrics, nil
+	}
+
+	teamRotation := model.TeamRotation{
+		MatchID:         matchDocument.MatchID,
+		TeamID:          team.ID,
+		PlayerRotations: make([]model.PlayerRotation, 0, 4),
+		CreatedAt:       time.Now(),
+	}
+
+	for playerName, rotation := range *rotations {
+		playerPath := make([]model.Position, 0, len(rotation))
+		for _, pos := range rotation {
+			playerPath = append(playerPath, model.Position{
+				X: int(pos.X),
+				Y: int(pos.Y),
+			})
+		}
+		playerRotation := model.PlayerRotation{
+			Name:     playerName,
+			Rotation: playerPath,
+		}
+		teamRotation.PlayerRotations = append(teamRotation.PlayerRotations, playerRotation)
+	}
+
+	return metrics, &teamRotation
 }
 
 // Type implements orchestrator.BatchWorker.

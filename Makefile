@@ -13,6 +13,9 @@ pubg:
 unplayable:
 	go run cmd/unplayable/main.go
 
+rotation:
+	go run cmd/rotation/main.go
+
 # Creates initial admin token based off of config.json
 token:
 	go run cmd/tokengen/main.go

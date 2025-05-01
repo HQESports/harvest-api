@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"harvest/internal/aws"
 	"harvest/internal/cache"
 	"harvest/internal/config"
@@ -23,7 +24,17 @@ import (
 
 func main() {
 	// Load configuration
-	cfg, err := config.LoadConfig("config/config.json")
+	env := os.Getenv("ENV")
+	env_config_prefix := "dev"
+
+	if env != "" {
+		env_config_prefix = env
+	}
+
+	config_file := fmt.Sprintf("config/%v.config.json", env_config_prefix)
+	log.Info().Str("Environment", env_config_prefix).Str("Config File", config_file).Msg("loading config file")
+
+	cfg, err := config.LoadConfig(config_file)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load configuration")
 		return
@@ -72,9 +83,10 @@ func main() {
 	tournamentWorker := worker.NewTournamentExpanderWorker(pubgClient, db)
 	tournamentMatchWorker := worker.NewTournamentMatchExpanderWorker(pubgClient, db)
 	processMatchesWorker := worker.NewProcessMatchWorker(pubgClient, db)
+	rotationWorker := worker.NewRotationWorker(pubgClient, db)
 
 	// Registering processors
-	registry := orchestrator.NewWorkerRegistry(playerWorker, matchWorker, tournamentWorker, tournamentMatchWorker, processMatchesWorker)
+	registry := orchestrator.NewWorkerRegistry(playerWorker, matchWorker, tournamentWorker, tournamentMatchWorker, processMatchesWorker, rotationWorker)
 
 	// Create AWS File Service
 	fileService, err := aws.NewFileService(cfg.AWS.S3.AccessKeyID, cfg.AWS.S3.SecretAccessKey, cfg.AWS.S3.Bucket, cfg.AWS.Region)

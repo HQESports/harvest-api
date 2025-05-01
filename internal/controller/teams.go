@@ -18,12 +18,12 @@ import (
 
 // TeamController handles operations related to teams
 type TeamController struct {
-	teamDB      database.TeamDatabase
+	teamDB      database.Database
 	fileService aws.FileService
 }
 
 // NewTeamController creates a new team controller
-func NewTeamController(teamDB database.TeamDatabase, fileService aws.FileService) *TeamController {
+func NewTeamController(teamDB database.Database, fileService aws.FileService) *TeamController {
 	return &TeamController{
 		teamDB:      teamDB,
 		fileService: fileService,
@@ -155,4 +155,21 @@ func (c *TeamController) uploadTeamImage(filename string, data io.Reader) (strin
 	}
 
 	return imageURL, nil
+}
+
+func (c *TeamController) GetTeamRotations(context context.Context, teamID string, startDate time.Time, endDate time.Time) ([]model.TeamRotationTiny, error) {
+	rotations, err := c.teamDB.GetTeamRotations(context, teamID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	return rotations, nil
+}
+
+func (c *TeamController) GetRotationByID(context context.Context, rotationID string) (*model.TeamRotation, error) {
+	id, err := primitive.ObjectIDFromHex(rotationID)
+	if err != nil {
+		return nil, err
+	}
+	return c.teamDB.GetRotationByID(context, id)
 }

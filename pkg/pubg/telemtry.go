@@ -29,6 +29,7 @@ type Common struct {
 // Character represents player information
 type Character struct {
 	Location Position `json:"location" bson:"location"`
+	Name     string   `json:"name"`
 }
 
 // GameState represents the current state of game zones
@@ -75,6 +76,92 @@ type SafeZone struct {
 type TelemetryData struct {
 	SafeZones []SafeZone `json:"safeZones" bson:"safeZones"`
 	PlanePath PlanePath  `json:"planePath" bson:"planePath"`
+}
+
+func GetRotationPaths(playerNames []string, telemData []byte) (*map[string][]Position, error) {
+	playerRotations := make(map[string][]Position, len(playerNames))
+
+	for _, playerName := range playerNames {
+		playerRotations[playerName] = nil
+	}
+
+	// Unmarshal the entire array of events into a slice of maps
+	var events []map[string]json.RawMessage
+	if err := json.Unmarshal(telemData, &events); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal telemetry data: %w", err)
+	}
+
+	log.Info().Int("total_events", len(events)).Msg("Processing telemetry events")
+
+	for _, eventData := range events {
+		// Extract event type
+		var eventType string
+		if typeData, ok := eventData["_T"]; ok {
+			if err := json.Unmarshal(typeData, &eventType); err != nil {
+				continue
+			}
+		} else {
+			continue // Skip events without a type
+		}
+
+		// Process based on event type
+		switch eventType {
+		case "LogParachuteLanding":
+			// test
+			var character Character
+
+			characterData, hasCharacter := eventData["character"]
+			if !hasCharacter {
+				continue
+			}
+
+			if err := json.Unmarshal(characterData, &character); err != nil {
+				continue
+			}
+
+			playerName := character.Name
+
+			_, ok := playerRotations[playerName]
+
+			if !ok {
+				// Player name not found in the player rotations
+				continue
+			}
+
+			// Player landed move on
+			playerRotations[playerName] = make([]Position, 0, 100)
+		case "LogPlayerPosition":
+			// test
+			var character Character
+
+			characterData, hasCharacter := eventData["character"]
+			if !hasCharacter {
+				continue
+			}
+
+			if err := json.Unmarshal(characterData, &character); err != nil {
+				continue
+			}
+
+			playerName, playerLoc := character.Name, character.Location
+
+			playerPath, ok := playerRotations[playerName]
+
+			if !ok {
+				// Player name not found in the player rotations
+				continue
+			}
+
+			if playerPath == nil {
+				// Player hasn't landed skip
+				continue
+			}
+
+			playerRotations[playerName] = append(playerPath, playerLoc)
+		}
+	}
+
+	return &playerRotations, nil
 }
 
 // ProcessTelemetry parses telemetry data from a JSON byte array and extracts relevant information
@@ -229,6 +316,30 @@ func ProcessTelemetry(data []byte) (*TelemetryData, error) {
 		Msg("Telemetry processing completed")
 
 	return result, nil
+}
+
+func (c *Client) BuildRotationsFromTelemetryYRL(ctx context.Context, playerNames []string, telemetryURL string) (*map[string][]Position, error) {
+	log.Info().
+		Str("url", telemetryURL).
+		Msg("Processing telemetry data from URL")
+
+	// Get the telemetry data using the existing client method
+	telemetryData, err := c.GetTelemetry(ctx, telemetryURL, false)
+	if err != nil {
+		log.Error().
+			Str("url", telemetryURL).
+			Err(err).
+			Msg("Failed to fetch telemetry data")
+		return nil, fmt.Errorf("failed to fetch telemetry data: %w", err)
+	}
+
+	log.Info().
+		Str("url", telemetryURL).
+		Int("data_size_kb", len(telemetryData)/1024).
+		Msg("Successfully downloaded telemetry data")
+
+	// Process the telemetry data
+	return GetRotationPaths(playerNames, telemetryData)
 }
 
 // ProcessTelemetryFromURL fetches and processes telemetry data from a URL
@@ -503,4 +614,119 @@ func drawLine(img *image.RGBA, x0, y0, x1, y1 int, c color.RGBA) {
 			err += dx
 		}
 	}
+}
+
+// GenerateRotationsImage creates a PNG image showing player rotation paths
+// from telemetry data and saves it to the specified output file
+func GenerateRotationsImage(outputFile string, playerRotations map[string][]Position, backgroundImagePath string) error {
+	var img *image.RGBA
+
+	// Check if background image is provided
+	if backgroundImagePath != "" {
+		// Load the background image
+		bgFile, err := os.Open(backgroundImagePath)
+		if err != nil {
+			return fmt.Errorf("failed to open background image: %w", err)
+		}
+		defer bgFile.Close()
+
+		bgImg, err := png.Decode(bgFile)
+		if err != nil {
+			return fmt.Errorf("failed to decode background image: %w", err)
+		}
+
+		// Create a new RGBA image with the same size as the background
+		bounds := bgImg.Bounds()
+		img = image.NewRGBA(bounds)
+
+		// Copy the background image to our RGBA image
+		for x := 0; x < bounds.Dx(); x++ {
+			for y := 0; y < bounds.Dy(); y++ {
+				img.Set(x, y, bgImg.At(x, y))
+			}
+		}
+	} else {
+		// No background provided, create a blank image with dark background
+		img = image.NewRGBA(image.Rect(0, 0, 800, 800))
+
+		// Fill with a dark background
+		for x := 0; x < 800; x++ {
+			for y := 0; y < 800; y++ {
+				img.Set(x, y, color.RGBA{20, 20, 20, 255}) // Dark gray background
+			}
+		}
+	}
+
+	// Get image dimensions
+	bounds := img.Bounds()
+	imgWidth := bounds.Dx()
+	imgHeight := bounds.Dy()
+
+	// Define scaling factor - from 816000 units to image dimensions
+	scaleX := float64(imgWidth) / 816000.0
+	scaleY := float64(imgHeight) / 816000.0
+
+	// Define colors for different players
+	playerColors := []color.RGBA{
+		{255, 0, 0, 255},     // Red
+		{0, 255, 0, 255},     // Green
+		{0, 0, 255, 255},     // Blue
+		{255, 255, 0, 255},   // Yellow
+		{255, 0, 255, 255},   // Magenta
+		{0, 255, 255, 255},   // Cyan
+		{255, 165, 0, 255},   // Orange
+		{128, 0, 128, 255},   // Purple
+		{255, 255, 255, 255}, // White
+		{128, 128, 128, 255}, // Gray
+	}
+
+	// Convert game coordinates to image coordinates
+	// With (0,0) at top-left of the image
+	toImageX := func(gameX float64) int {
+		return int(gameX * scaleX)
+	}
+	toImageY := func(gameY float64) int {
+		return int(gameY * scaleY)
+	}
+
+	// Draw each player's rotation path
+	playerIndex := 0
+	for _, positions := range playerRotations {
+		if len(positions) < 2 {
+			continue // Skip players with insufficient position data
+		}
+
+		// Select color for this player
+		colorIndex := playerIndex % len(playerColors)
+		playerColor := playerColors[colorIndex]
+		playerIndex++
+
+		// Draw lines connecting consecutive positions
+		for i := 0; i < len(positions)-1; i++ {
+			startX := toImageX(positions[i].X)
+			startY := toImageY(positions[i].Y)
+			endX := toImageX(positions[i+1].X)
+			endY := toImageY(positions[i+1].Y)
+
+			// Draw line between consecutive positions
+			drawLine(img, startX, startY, endX, endY, playerColor)
+		}
+
+		// Mark starting position with a small circle
+		startPos := positions[0]
+		drawCircle(img, toImageX(startPos.X), toImageY(startPos.Y), 5, playerColor)
+	}
+
+	// Save the image
+	f, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer f.Close()
+
+	if err := png.Encode(f, img); err != nil {
+		return fmt.Errorf("failed to encode image: %w", err)
+	}
+
+	return nil
 }

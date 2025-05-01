@@ -17,13 +17,13 @@ type Database interface {
 	JobDatabase
 	MatchMetricsDatabase
 	TeamDatabase
+	TeamRotationDatabase
 }
 
 type mongoDB struct {
 	client *mongo.Client
 	db     *mongo.Database
 
-	trainCol       *mongo.Collection
 	playersCol     *mongo.Collection
 	tournamentsCol *mongo.Collection
 	matchesCol     *mongo.Collection
@@ -31,7 +31,7 @@ type mongoDB struct {
 	jobsCol        *mongo.Collection
 	teamsCol       *mongo.Collection
 
-	organizationsCol *mongo.Collection
+	teamRotationsCol *mongo.Collection
 }
 
 func New(config *config.Config) (Database, error) {
@@ -55,11 +55,10 @@ func New(config *config.Config) (Database, error) {
 	return &mongoDB{
 		client:           client,
 		db:               db,
-		trainCol:         db.Collection("erangel_train"),
 		playersCol:       db.Collection("players"),
 		tournamentsCol:   db.Collection("tournaments"),
 		matchesCol:       db.Collection("matches"),
-		organizationsCol: db.Collection("organizations"),
+		teamRotationsCol: db.Collection("team_rotations"),
 		teamsCol:         db.Collection("teams"),
 		jobsCol:          jobsCol,
 		tokensCol:        tokensCol,

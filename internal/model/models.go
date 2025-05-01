@@ -56,9 +56,17 @@ type Match struct {
 
 	// Telemetry data organized under an umbrella field
 	TelemetryData *TelemetryData `bson:"telemetry_data,omitempty"` // All extracted telemetry data
+}
 
-	// Team rotations at top level
-	TeamRotations []TeamRotation `bson:"team_rotations,omitempty`
+type MatchTiny struct {
+	MapName   string    `bson:"map_name"`   // From mapName in API
+	GameMode  string    `bson:"game_mode"`  // From gameMode in API
+	Duration  int       `bson:"duration"`   // Match duration in seconds
+	CreatedAt time.Time `bson:"created_at"` // From createdAt in API
+	MatchType string    `bson:"match_type"` // Not from API either [LIVE_SCRIM, RANKED, EVENT]
+
+	// Processing metadata
+	Processed bool `bson:"processed"` // Whether this match has been processed
 }
 
 // TelemetryData contains all extracted data from telemetry
@@ -120,25 +128,32 @@ type Team struct {
 	Players     []Player           `json:"players" bson:"players"`
 }
 
-// TeamRotation represents the movement of a team during a match
+// TeamRotationDocument represents a team's movement during a match in a dedicated collection
 type TeamRotation struct {
-	TeamID          string           `bson:"team_id"`          // Reference to team
-	TeamName        string           `bson:"team_name"`        // For easier querying
-	Positions       []Position       `bson:"positions"`        // Array of team center positions throughout the match
-	PlayerRotations []PlayerRotation `bson:"player_rotations"` // Array of individual player rotations
+	ID              primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
+	MatchID         string             `json:"match_id" bson:"match_id"` // Reference to parent match
+	TeamID          primitive.ObjectID `json:"team_id" bson:"team_id"`   // Reference to team
+	Match           Match              `json:"match" bson:"match"`
+	PlayerRotations []PlayerRotation   `json:"player_rotations" bson:"player_rotations"` // Array of individual player rotations
+	CreatedAt       time.Time          `json:"created_at" bson:"created_at"`             // When this record was created
+	UpdatedAt       time.Time          `json:"updated_at" bson:"updated_at"`             // When this record was created
 }
 
-// PlayerRotation represents the movement of a single player during a match
+type TeamRotationTiny struct {
+	ID        primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
+	MatchID   string             `json:"match_id" bson:"match_id"` // Reference to parent match
+	TeamID    primitive.ObjectID `json:"team_id" bson:"team_id"`   // Reference to team
+	Match     MatchTiny          `json:"match" bson:"match"`
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"` // When this record was created
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"` // When this record was created
+}
+
 type PlayerRotation struct {
-	PlayerID   string     `bson:"player_id"`   // Reference to player
-	PlayerName string     `bson:"player_name"` // For easier querying
-	Positions  []Position `bson:"positions"`   // Array of positions throughout the match
+	Name     string     `json:"name" bson:"name"`
+	Rotation []Position `json:"rotation" bson:"rotation"`
 }
 
-// Position represents a single location point with timestamp
 type Position struct {
-	X         float64   `bson:"x"`         // X coordinate
-	Y         float64   `bson:"y"`         // Y coordinate
-	Timestamp time.Time `bson:"timestamp"` // When the team was at this position
-	Phase     int       `bson:"phase"`     // Which circle phase this position corresponds to
+	X int `json:"x" bson:"x"`
+	Y int `json:"y" bson:"y"`
 }

@@ -31,7 +31,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 		pubg := api.Group("/pubg")
 		{
 			pubg.GET("/matches", s.filteredMatchesHandler)
-			pubg.POST("/names", s.namesHandler)
+			pubg.GET("/matches/random", s.filteredRandomMatchHandler)
+			pubg.POST("/names", s.namesHandler) 
 		}
 
 		// Job routes - accessible to both ADMIN and SERVICE roles
@@ -51,6 +52,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 			teams.GET("/:id", s.GetTeamHandler)       // Get a specific team by ID
 			teams.PUT("/:id", s.UpdateTeamHandler)    // Update a team
 			teams.DELETE("/:id", s.DeleteTeamHandler) // Delete a team
+
+			teams.GET("/rotations/:id", s.GetTeamRotationsHandler)
+			teams.GET("/rotation/:id", s.GetTeamRotationByIDHandler)
 		}
 
 		metrics := api.Group("/metrics")

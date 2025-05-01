@@ -33,7 +33,8 @@ type PubgDatabase interface {
 	AddOrUpdateTeamRotation(context.Context, string, model.TeamRotation) error
 	GetMatchByID(context.Context, string) (*model.Match, error)
 
-	GetOrCreateMatch(context.Context, model.Match) (*model.Match, error)
+	GetOrCreateMatch(context.Context, *model.Match) (*model.Match, error)
+	GetRandomMatch(context.Context, string, []string, *time.Time, *time.Time) (*model.Match, error)
 }
 
 func (m *mongoDB) BulkUpsertPlayers(ctx context.Context, entities []model.Entity) (*mongo.BulkWriteResult, error) {
@@ -537,7 +538,7 @@ func (m *mongoDB) AddOrUpdateTeamRotation(ctx context.Context, matchID string, r
 
 // GetOrCreateMatch checks if a match exists with the given match_id and returns it if found,
 // otherwise creates a new match with the provided data and returns it
-func (m *mongoDB) GetOrCreateMatch(ctx context.Context, match model.Match) (*model.Match, error) {
+func (m *mongoDB) GetOrCreateMatch(ctx context.Context, match *model.Match) (*model.Match, error) {
 	// First check if the match already exists
 	existingMatch, err := m.GetMatchByID(ctx, match.MatchID)
 	if err != nil {
@@ -561,5 +562,76 @@ func (m *mongoDB) GetOrCreateMatch(ctx context.Context, match model.Match) (*mod
 	}
 
 	// Return the newly created match
-	return &match, nil
+	return match, nil
+}
+
+// GetMatchesByFilters retrieves matches based on map name, match types, and date range and returns a single random match
+func (m *mongoDB) GetRandomMatch(ctx context.Context, mapName string, matchTypes []string, startDate *time.Time, endDate *time.Time) (*model.Match, error) {
+	// Start with an empty filter
+	filter := bson.M{
+		"processed": true, // Only return processed matches
+	}
+
+	// Add map name filter if provided
+	if mapName != "" {
+		filter["map_name"] = mapName
+	}
+
+	// Add match type filter if provided - handle multiple match types
+	if len(matchTypes) > 0 {
+		if len(matchTypes) == 1 {
+			filter["match_type"] = matchTypes[0]
+		} else {
+			filter["match_type"] = bson.M{"$in": matchTypes}
+		}
+	}
+
+	// Add created_at date range filter if either start or end date is provided
+	if startDate != nil || endDate != nil {
+		dateFilter := bson.M{}
+
+		if startDate != nil {
+			dateFilter["$gte"] = *startDate
+		}
+
+		if endDate != nil {
+			dateFilter["$lte"] = *endDate
+		}
+
+		if len(dateFilter) > 0 {
+			filter["created_at"] = dateFilter
+		}
+	}
+
+	// Add the $sample stage to the pipeline
+	pipeline := []bson.M{
+		{"$match": filter},
+		{"$sample": bson.M{"size": 1}},
+	}
+
+	// Log the filter being used (helpful for debugging)
+	log.Debug().Interface("filter", filter).Msg("Querying matches with filters for a single random match")
+
+	// Execute the aggregation pipeline
+	cursor, err := m.matchesCol.Aggregate(ctx, pipeline)
+	if err != nil {
+		log.Error().Err(err).Msg("Error retrieving a random match by filters")
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	// Decode the results
+	var matches []model.Match
+	if err = cursor.All(ctx, &matches); err != nil {
+		log.Error().Err(err).Msg("Error decoding match")
+		return nil, err
+	}
+
+	if len(matches) == 0 {
+		log.Debug().Msg("No matches found with the given filters")
+		return nil, nil
+	}
+
+	log.Debug().Msg("Retrieved a filtered random match")
+	return &matches[0], nil
 }

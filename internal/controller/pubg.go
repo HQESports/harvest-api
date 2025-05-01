@@ -23,6 +23,7 @@ type PubgController interface {
 	CreatePlayers(context.Context, []string) (int, error)
 	CreateTournaments(context.Context) (int, error)
 	GetFilteredMatches(context.Context, MatchFilter) ([]model.Match, error)
+	GetFilteredRandomMatch(context.Context, MatchFilter) (*model.Match, error)
 }
 
 type pubgController struct {
@@ -174,6 +175,46 @@ func (pc *pubgController) GetFilteredMatches(ctx context.Context, filter MatchFi
 	log.Info().
 		Str("job_name", jobName).
 		Int("matches_found", len(matches)).
+		Dur("duration", time.Since(startTime)).
+		Msg("Successfully retrieved filtered matches")
+
+	return matches, nil
+}
+
+// GetFilteredMatches retrieves matches based on the provided filter criteria
+func (pc *pubgController) GetFilteredRandomMatch(ctx context.Context, filter MatchFilter) (*model.Match, error) {
+	jobName := "get_filtered_matches"
+
+	log.Info().
+		Str("job_name", jobName).
+		Str("map_name", filter.MapName).
+		Strs("match_types", filter.MatchTypes).
+		Interface("start_date", filter.StartDate).
+		Interface("end_date", filter.EndDate).
+		Int("limit", filter.Limit).
+		Msg("Retrieving filtered matches")
+
+	startTime := time.Now()
+
+	// Call the database function with the provided filters
+	matches, err := pc.db.GetRandomMatch(
+		ctx,
+		filter.MapName,
+		filter.MatchTypes,
+		filter.StartDate,
+		filter.EndDate,
+	)
+
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("job_name", jobName).
+			Msg("Failed to retrieve filtered matches")
+		return nil, err
+	}
+
+	log.Info().
+		Str("job_name", jobName).
 		Dur("duration", time.Since(startTime)).
 		Msg("Successfully retrieved filtered matches")
 

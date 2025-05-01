@@ -27,6 +27,9 @@ COPY --from=builder /app/api .
 # Explicitly copy the config directory to make it clear
 COPY --from=builder /app/config /root/config
 
+# Set environment variable - used to pickup the proper config
+ENV ENV=prod
+
 EXPOSE 8080
 
 CMD ["./api"]
