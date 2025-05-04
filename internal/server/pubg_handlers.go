@@ -210,7 +210,8 @@ func (s *Server) filteredRandomMatchHandler(c *gin.Context) {
 	}
 
 	// Get filtered matches
-	match, err := s.pc.GetFilteredMatches(c.Request.Context(), filter)
+	match, err := s.pc.GetFilteredRandomMatch(c.Request.Context(), filter)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
