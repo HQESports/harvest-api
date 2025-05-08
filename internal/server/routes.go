@@ -32,7 +32,20 @@ func (s *Server) RegisterRoutes() http.Handler {
 		{
 			pubg.GET("/matches", s.filteredMatchesHandler)
 			pubg.GET("/matches/random", s.filteredRandomMatchHandler)
-			pubg.POST("/names", s.namesHandler) 
+			pubg.GET("/matches/:match_id", s.GetMatchByIDHandler)
+			pubg.POST("/names", s.namesHandler)
+			pubg.GET("/players", s.getPlayersHanlder)
+			pubg.GET("/tournaments", s.getTournamentsHandler)
+
+			dropspots := pubg.Group("/dropspots")
+			{
+				dropspots.POST("", s.CreateDropSpotLocationHandler)
+				dropspots.POST("/bulk", s.BulkUpsertDropSpotLocationsHandler)
+				dropspots.GET("/:id", s.GetDropSpotLocationByIDHandler)
+				dropspots.GET("/map/:map_name", s.GetDropSpotLocationByMapHandler)
+				dropspots.PUT("/:id", s.UpdateDropSpotLocationHandler)
+				dropspots.DELETE("/:id", s.DeleteDropSpotLocationHandler)
+			}
 		}
 
 		// Job routes - accessible to both ADMIN and SERVICE roles

@@ -157,3 +157,18 @@ type Position struct {
 	X int `json:"x" bson:"x"`
 	Y int `json:"y" bson:"y"`
 }
+
+type PaginationOptions struct {
+	Page int `json:"page" bson:"page"`
+	Size int `json:"size" bson:"size"`
+}
+
+type DropSpotLocation struct {
+	ID        primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
+	MapName   string             `json:"map_name" bson:"map_name"` // Map name
+	Names     []string           `json:"names" bson:"names"`       // Array of coordinates
+	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+	X         int                `json:"x" bson:"x"`
+	Y         int                `json:"y" bson:"y"`
+}

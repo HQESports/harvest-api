@@ -35,6 +35,9 @@ type PubgDatabase interface {
 
 	GetOrCreateMatch(context.Context, *model.Match) (*model.Match, error)
 	GetRandomMatch(context.Context, string, []string, *time.Time, *time.Time) (*model.Match, error)
+
+	GetPlayers(context.Context, int, int) ([]model.Entity, error)
+	GetTournaments(context.Context, int, int) ([]model.Entity, error)
 }
 
 func (m *mongoDB) BulkUpsertPlayers(ctx context.Context, entities []model.Entity) (*mongo.BulkWriteResult, error) {
@@ -95,6 +98,42 @@ func (m *mongoDB) BulkUpsertEntities(ctx context.Context, col *mongo.Collection,
 	}
 
 	return writeResult, nil
+}
+
+func (m *mongoDB) GetPlayers(ctx context.Context, page, limit int) ([]model.Entity, error) {
+	return m.getEntities(ctx, m.playersCol, page, limit)
+}
+
+func (m *mongoDB) GetTournaments(ctx context.Context, page, limit int) ([]model.Entity, error) {
+	return m.getEntities(ctx, m.tournamentsCol, page, limit)
+}
+
+func (m *mongoDB) getEntities(ctx context.Context, col *mongo.Collection, page, limit int) ([]model.Entity, error) {
+	filter := bson.M{}
+
+	findOptions := options.Find()
+
+	if limit > 0 {
+		findOptions.SetLimit(int64(limit))
+	}
+	if page >= 0 {
+		findOptions.SetSkip(int64(page * limit))
+	}
+
+	cursor, err := col.Find(ctx, filter, findOptions)
+	if err != nil {
+		log.Error().Msgf("Error retrieving entities: %v", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var entities []model.Entity
+	if err = cursor.All(ctx, &entities); err != nil {
+		log.Error().Msgf("Error decoding entities: %v", err)
+		return nil, err
+	}
+
+	return entities, nil
 }
 
 // GetActiveEntities retrieves all active entities from the specified collection

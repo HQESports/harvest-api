@@ -15,7 +15,7 @@ import (
 // Testing script to see if the rabbit MQ client functions correctly
 func main() {
 	// Load configuration
-	cfg, err := config.LoadConfig("config/config.json")
+	cfg, err := config.LoadConfig("config/config.dev.json")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load configuration")
 		os.Exit(1)

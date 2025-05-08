@@ -21,6 +21,7 @@ type Server struct {
 	tc             controller.TokenController
 	jc             controller.JobController
 	mc             controller.MetricsController
+	dc             controller.DropSpotLocationController
 	teamController controller.TeamController
 	config         config.Config
 }
@@ -38,12 +39,15 @@ func New(config config.Config, db database.Database, cache cache.Cache, rabbit r
 	tc := controller.NewToken(db)
 	teamController := controller.NewTeamController(db, fileService)
 
+	dc := controller.NewDropSpotLocationController(db)
+
 	server := Server{
 		sc:             sc,
 		pc:             pc,
 		tc:             tc,
 		jc:             jc,
 		mc:             mc,
+		dc:             dc,
 		teamController: *teamController,
 		config:         config,
 	}

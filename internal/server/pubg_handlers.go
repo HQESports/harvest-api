@@ -231,3 +231,113 @@ func (s *Server) filteredRandomMatchHandler(c *gin.Context) {
 		"filter":  filter,
 	})
 }
+
+func (s *Server) getPlayersHanlder(c *gin.Context) {
+	pageParam := c.Query("page")
+	page := 0
+	if pageParam != "" {
+		parsedPage, err := strconv.Atoi(pageParam)
+		if err != nil || parsedPage < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page parameter. Must be a non-negative integer"})
+			return
+		}
+		page = parsedPage
+	}
+	// Parse page size from query parameters
+	pageSizeParam := c.Query("page_size")
+	pageSize := 25 // Default page size
+	if pageSizeParam != "" {
+		parsedPageSize, err := strconv.Atoi(pageSizeParam)
+		if err != nil || parsedPageSize < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page_size parameter. Must be a positive integer"})
+			return
+		}
+		pageSize = parsedPageSize
+	}
+	players, err := s.pc.GetPlayers(c.Request.Context(), page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(players) == 0 {
+		players = []model.Entity{}
+	}
+
+	pageinationOptions := model.PaginationOptions{
+		Page: page,
+		Size: pageSize,
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"players":    players,
+		"count":      len(players),
+		"pagination": pageinationOptions,
+	})
+}
+
+func (s *Server) getTournamentsHandler(c *gin.Context) {
+	// Parse page number from query parameters
+	pageParam := c.Query("page")
+	page := 0
+	if pageParam != "" {
+		parsedPage, err := strconv.Atoi(pageParam)
+		if err != nil || parsedPage < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page parameter. Must be a non-negative integer"})
+			return
+		}
+		page = parsedPage
+	}
+	// Parse page size from query parameters
+	pageSizeParam := c.Query("page_size")
+	pageSize := 25 // Default page size
+	if pageSizeParam != "" {
+		parsedPageSize, err := strconv.Atoi(pageSizeParam)
+		if err != nil || parsedPageSize < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid page_size parameter. Must be a positive integer"})
+			return
+		}
+		pageSize = parsedPageSize
+	}
+	tournaments, err := s.pc.GetTournaments(c.Request.Context(), page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(tournaments) == 0 {
+		tournaments = []model.Entity{}
+	}
+
+	pageinationOptions := model.PaginationOptions{
+		Page: page,
+		Size: pageSize,
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"tournaments": tournaments,
+		"count":       len(tournaments),
+		"pagination":  pageinationOptions,
+	})
+}
+
+func (s *Server) GetMatchByIDHandler(c *gin.Context) {
+	matchID := c.Param("match_id")
+	if matchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "match_id parameter is required"})
+		return
+	}
+
+	match, err := s.pc.GetMatchByID(c.Request.Context(), matchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if match == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Match not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, match)
+}

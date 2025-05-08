@@ -24,6 +24,10 @@ type PubgController interface {
 	CreateTournaments(context.Context) (int, error)
 	GetFilteredMatches(context.Context, MatchFilter) ([]model.Match, error)
 	GetFilteredRandomMatch(context.Context, MatchFilter) (*model.Match, error)
+	GetMatchByID(context.Context, string) (*model.Match, error)
+
+	GetPlayers(context.Context, int, int) ([]model.Entity, error)
+	GetTournaments(context.Context, int, int) ([]model.Entity, error)
 }
 
 type pubgController struct {
@@ -36,6 +40,14 @@ func NewPUBG(db database.Database, client pubg.Client) PubgController {
 		db:     db,
 		client: client,
 	}
+}
+
+func (pc *pubgController) GetPlayers(ctx context.Context, page, pageSize int) ([]model.Entity, error) {
+	return pc.db.GetPlayers(ctx, page, pageSize)
+}
+
+func (pc *pubgController) GetTournaments(ctx context.Context, page, pageSize int) ([]model.Entity, error) {
+	return pc.db.GetTournaments(ctx, page, pageSize)
 }
 
 func (pc *pubgController) CreatePlayers(ctx context.Context, names []string) (int, error) {
@@ -219,4 +231,8 @@ func (pc *pubgController) GetFilteredRandomMatch(ctx context.Context, filter Mat
 		Msg("Successfully retrieved filtered matches")
 
 	return matches, nil
+}
+
+func (pc *pubgController) GetMatchByID(ctx context.Context, matchID string) (*model.Match, error) {
+	return pc.db.GetMatchByID(ctx, matchID)
 }

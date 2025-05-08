@@ -18,20 +18,20 @@ type Database interface {
 	MatchMetricsDatabase
 	TeamDatabase
 	TeamRotationDatabase
+	DropSpotLocationDatabase
 }
 
 type mongoDB struct {
-	client *mongo.Client
-	db     *mongo.Database
-
-	playersCol     *mongo.Collection
-	tournamentsCol *mongo.Collection
-	matchesCol     *mongo.Collection
-	tokensCol      *mongo.Collection
-	jobsCol        *mongo.Collection
-	teamsCol       *mongo.Collection
-
-	teamRotationsCol *mongo.Collection
+	client               *mongo.Client
+	db                   *mongo.Database
+	playersCol           *mongo.Collection
+	tournamentsCol       *mongo.Collection
+	matchesCol           *mongo.Collection
+	tokensCol            *mongo.Collection
+	jobsCol              *mongo.Collection
+	teamsCol             *mongo.Collection
+	dropSpotLocationsCol *mongo.Collection
+	teamRotationsCol     *mongo.Collection
 }
 
 func New(config *config.Config) (Database, error) {
@@ -53,15 +53,16 @@ func New(config *config.Config) (Database, error) {
 	jobsCol := db.Collection("jobs")
 
 	return &mongoDB{
-		client:           client,
-		db:               db,
-		playersCol:       db.Collection("players"),
-		tournamentsCol:   db.Collection("tournaments"),
-		matchesCol:       db.Collection("matches"),
-		teamRotationsCol: db.Collection("team_rotations"),
-		teamsCol:         db.Collection("teams"),
-		jobsCol:          jobsCol,
-		tokensCol:        tokensCol,
+		client:               client,
+		db:                   db,
+		playersCol:           db.Collection("players"),
+		tournamentsCol:       db.Collection("tournaments"),
+		matchesCol:           db.Collection("matches"),
+		teamRotationsCol:     db.Collection("team_rotations"),
+		teamsCol:             db.Collection("teams"),
+		dropSpotLocationsCol: db.Collection("drop_spot_locations"),
+		jobsCol:              jobsCol,
+		tokensCol:            tokensCol,
 	}, nil
 }
 
