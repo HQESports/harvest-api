@@ -3,8 +3,8 @@
     "port": 3000,
     "app_name": "Harvest API",
     "redis": {
-        "address": "redis.railway.internal:6379",
-        "password": "gXnNlfFbrzRxwRiIlxILdXqNXqdAlqrt",
+        "address": "mainline.proxy.rlwy.net:58547",
+        "password": "NvurhKQfuJWsmlcWKPJyxsaBMlhDKTZo",
         "db": 0,
         "prefix": "pubg"
     },
@@ -43,9 +43,9 @@
         "default_cache_ttl": 5
     },
     "mongodb": {
-        "uri": "mongodb://mongodb.railway.internal",
+        "uri": "mongodb://mongo:eDxBugDnVzZyQOvGojahjESgpTClFfdK@metro.proxy.rlwy.net:19680",
         "username": "mongo",
-        "password": "YNaweecjEMlRXnfRprPkktVyLoojehWF",
+        "password": "eDxBugDnVzZyQOvGojahjESgpTClFfdK",
         "db": "pubg",
         "options": {
             "connectTimeoutMS": 30000,
@@ -58,10 +58,10 @@
         "directory": "./logs"
     },
     "rabbitmq": {
-        "username": "7RYd6vmB0woEkKz4",
-        "password": "4JoeueDEPlfADpNeHUM8GsGZnCCFaCFp",
-        "host": "rabbitmq.railway.internal",
-        "port": 5672,
+        "username": "Squq4MWnObTdwJWP",
+        "password": "QN4t.LdDQuVN8INYEeZIaF8EEcQn6U7.",
+        "host": "interchange.proxy.rlwy.net",
+        "port": 20914,
         "vhost": "/",
         "routing_key": "jobs",
         "exchange_name": "harvest_jobs",

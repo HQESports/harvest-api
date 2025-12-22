@@ -3,7 +3,7 @@
     "port": 3000,
     "app_name": "Harvest API",
     "redis": {
-        "address": "redis://default:NvurhKQfuJWsmlcWKPJyxsaBMlhDKTZo@mainline.proxy.rlwy.net:58547",
+        "address": "mainline.proxy.rlwy.net:58547",
         "password": "NvurhKQfuJWsmlcWKPJyxsaBMlhDKTZo",
         "db": 0,
         "prefix": "pubg"
@@ -60,7 +60,7 @@
     "rabbitmq": {
         "username": "Squq4MWnObTdwJWP",
         "password": "QN4t.LdDQuVN8INYEeZIaF8EEcQn6U7.",
-        "host": "amqp://Squq4MWnObTdwJWP:QN4t.LdDQuVN8INYEeZIaF8EEcQn6U7.@interchange.proxy.rlwy.net",
+        "host": "interchange.proxy.rlwy.net",
         "port": 20914,
         "vhost": "/",
         "routing_key": "jobs",
