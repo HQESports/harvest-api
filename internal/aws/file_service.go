@@ -89,6 +89,7 @@ func (s *fileService) TestConnection() error {
 		Bucket:  aws.String(s.bucket),
 		MaxKeys: aws.Int32(1), // Only fetch 1 key to minimize data transfer
 	})
+	log.Err(err).Msg("AWS S3 Test Connection")
 
 	return err
 }

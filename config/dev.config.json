@@ -86,11 +86,9 @@
     "aws": {
         "region": "us-east-2",
         "s3": {
-            "access_key_id": "AKIARPWI3GYSCVIB5J3B",
-            "secret_access_key": "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",
-            "bucket": "nexusbucketpubg",
-            "upload_folder": "uploads",
-            "public_base_url": "https://your-bucket-name.s3.us-east-2.amazonaws.com/"
+            "access_key_id": "AKIARPWI3GYSHIZDJH7H",
+            "secret_access_key": "OzmS3TijuuJkCamgYOYp6cSkzhh1jUq8OMURINjK",
+            "bucket": "nexusbucketpubg"
         }
     }
 }
