@@ -224,7 +224,7 @@ Jobs flow through the system as follows:
 ### PUBG Data Endpoints
 All PUBG data endpoints require authentication with either ADMIN or SERVICE role tokens.
 
-- `POST /api/names` - Create player entities from names
+- `POST /api  ` - Create player entities from names
   - Request body: `{ "names": "player1,player2,player3" }`
   - Creates player entities for the provided comma-separated list of player names
   - Response: `201 Created` with `{ "playersProcessed": count }` indicating the number of processed players
